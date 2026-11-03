@@ -581,9 +581,9 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { scope: './' })
-        .then((reg) => console.log('Service Worker enregistré avec succès ! Scope:', reg.scope))
-        .catch((err) => console.error('Échec enregistrement Service Worker:', err));
+        navigator.serviceWorker.register('sw.js').catch(err => {
+          console.log('Service Worker skipped/failed', err);
+        });
       });
     }
 
@@ -620,7 +620,7 @@
     let mapMarkers = [];
     let routePolyline = null;
     let mapPickMode = null;
-    let shouldFitBoundsOnce = true; // Drapeau pour exécuter le fitBounds une seule fois au chargement/import
+    let shouldFitBoundsOnce = true;
 
     function saveToLocalStorage() {
       try {
@@ -698,7 +698,6 @@
         });
       }
 
-      // Restauration du mode d'affichage et de l'onglet actif au démarrage
       switchViewMode(appState.viewMode || 'designer');
       switchLeftTab(appState.activeTab || 'structure');
       renderApp();
@@ -1849,7 +1848,6 @@
         routePolyline = L.polyline(allTripCoords, { color: '#6366f1', weight: 4, dashArray: '8, 8', opacity: 0.8 }).addTo(map);
       }
 
-      // --- Cadrage automatique unique au démarrage ou après un import ---
       if (shouldFitBoundsOnce) {
         let allPoints = [];
         if (appState.departurePoint) allPoints.push([appState.departurePoint.lat, appState.departurePoint.lng]);
@@ -1861,7 +1859,7 @@
         if (allPoints.length > 0) {
           map.fitBounds(allPoints, { padding: [50, 50], maxZoom: 13 });
         }
-        shouldFitBoundsOnce = false; // Désactive l'ajustement automatique pour la suite de la navigation
+        shouldFitBoundsOnce = false;
       }
     }
 
@@ -2105,13 +2103,15 @@
       renderApp();
     }
 
-    function openSpotModal() {
+    function openSpotModal(defaultName = '', defaultDesc = '') {
       document.getElementById('spotForm').reset();
       document.getElementById('spotId').value = '';
       document.getElementById('spotPhotoPreview').classList.add('hidden');
       delete document.getElementById('spotForm').dataset.imageBase64;
       document.getElementById('spotModalTitle').innerText = "Ajouter un Spot";
       populateSpotTargetSelect();
+      if (defaultName) document.getElementById('spotName').value = defaultName;
+      if (defaultDesc) document.getElementById('spotDesc').value = defaultDesc;
       openModal('spotModal');
     }
 
@@ -2188,7 +2188,7 @@
       renderApp();
     }
 
-    function openHotelModal() {
+    function openHotelModal(defaultName = '', defaultDesc = '') {
       if (appState.zones.length === 0) {
         alert("Veuillez d'abord créer au moins une zone avant d'ajouter un hôtel !");
         return;
@@ -2199,6 +2199,8 @@
       document.getElementById('hotelModalTitle').innerText = "Ajouter un Hébergement";
       populateHotelZoneSelect();
       document.getElementById('hotelZoneSelect').value = '';
+      if (defaultName) document.getElementById('hotelName').value = defaultName;
+      if (defaultDesc) document.getElementById('hotelDesc').value = defaultDesc;
       openModal('hotelModal');
     }
 
@@ -2268,11 +2270,13 @@
       renderApp();
     }
 
-    function openBonPlanModal() {
+    function openBonPlanModal(defaultName = '', defaultDesc = '') {
       document.getElementById('bonPlanForm').reset();
       document.getElementById('bonPlanId').value = '';
       document.getElementById('bonPlanModalTitle').innerText = "Ajouter un Bon Plan";
       populateBonPlanTargetSelect();
+      if (defaultName) document.getElementById('bonPlanTitle').value = defaultName;
+      if (defaultDesc) document.getElementById('bonPlanDesc').value = defaultDesc;
       openModal('bonPlanModal');
     }
 
@@ -2352,6 +2356,9 @@
         el.onclick = () => {
           const lat = parseFloat(item.lat);
           const lon = parseFloat(item.lon);
+          const shortName = (item.display_name.split(',')[0] || '').replace(/'/g, "\\'");
+          const fullDesc = item.display_name.replace(/'/g, "\\'");
+
           map.setView([lat, lon], 13);
           L.popup()
             .setLatLng([lat, lon])
@@ -2359,9 +2366,9 @@
               <div class="text-xs font-sans p-1.5 space-y-2">
                 <b>${item.display_name.split(',')[0]}</b>
                 <div class="flex gap-1.5">
-                  <button onclick="quickAdd('spot', ${lat}, ${lon})" class="bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Spot</button>
-                  <button onclick="quickAdd('hotel', ${lat}, ${lon})" class="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Hôtel</button>
-                  <button onclick="quickAdd('bonplan', ${lat}, ${lon})" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Bon Plan</button>
+                  <button onclick="quickAdd('spot', ${lat}, ${lon}, '${shortName}', '${fullDesc}')" class="bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Spot</button>
+                  <button onclick="quickAdd('hotel', ${lat}, ${lon}, '${shortName}', '${fullDesc}')" class="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Hôtel</button>
+                  <button onclick="quickAdd('bonplan', ${lat}, ${lon}, '${shortName}', '${fullDesc}')" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Bon Plan</button>
                 </div>
               </div>
             `)
@@ -2372,11 +2379,11 @@
       });
     }
 
-    function quickAdd(type, lat, lng) {
+    function quickAdd(type, lat, lng, name = '', desc = '') {
       map.closePopup();
-      if (type === 'spot') { openSpotModal(); document.getElementById('spotLat').value = lat; document.getElementById('spotLng').value = lng; }
-      else if (type === 'hotel') { openHotelModal(); document.getElementById('hotelLat').value = lat; document.getElementById('hotelLng').value = lng; }
-      else if (type === 'bonplan') { openBonPlanModal(); document.getElementById('bonPlanLat').value = lat; document.getElementById('bonPlanLng').value = lng; }
+      if (type === 'spot') { openSpotModal(name, desc); document.getElementById('spotLat').value = lat; document.getElementById('spotLng').value = lng; }
+      else if (type === 'hotel') { openHotelModal(name, desc); document.getElementById('hotelLat').value = lat; document.getElementById('hotelLng').value = lng; }
+      else if (type === 'bonplan') { openBonPlanModal(name, desc); document.getElementById('bonPlanLat').value = lat; document.getElementById('bonPlanLng').value = lng; }
     }
 
     function checkCoherence() {
@@ -2728,7 +2735,7 @@
       if (!appState.viewMode) appState.viewMode = 'designer';
       if (!appState.name) appState.name = "Mon Voyage";
 
-      shouldFitBoundsOnce = true; // Activer l'ajustement automatique de la carte pour le nouveau fichier importé
+      shouldFitBoundsOnce = true;
 
       document.getElementById('tripNameInput').value = appState.name;
       document.getElementById('pivotDateInput').value = appState.pivotDate;

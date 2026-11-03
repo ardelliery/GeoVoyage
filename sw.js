@@ -1,4 +1,4 @@
-const CACHE_NAME = 'geovoyage-v2';
+const CACHE_NAME = 'geovoyage-v2.1';
 
 // Liste des ressources essentielles à mettre en cache lors de l'installation
 const ASSETS_TO_CACHE = [
