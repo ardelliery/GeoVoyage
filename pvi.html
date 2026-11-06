@@ -376,48 +376,68 @@
   </div>
 
   <div id="spotModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <form id="spotForm" onsubmit="saveSpot(event)" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-100 space-y-3.5">
+    <form id="spotForm" onsubmit="saveSpot(event)" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-100 space-y-3.5 max-h-[90vh] overflow-y-auto">
       <h3 id="spotModalTitle" class="text-base font-bold">Ajouter / Éditer un Spot</h3>
       <input type="hidden" id="spotId">
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Nom du Spot</label>
         <input type="text" id="spotName" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
       </div>
+      
+      <!-- Recherche d'adresse unifiée pour Spot -->
       <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Rechercher une adresse / Lieu</label>
+        <div class="flex space-x-2">
+          <input type="text" id="spotSearchQuery" placeholder="Ex: Badwater Basin, Death Valley" class="w-full px-3.5 py-2 text-xs border border-slate-700 bg-slate-800 rounded-xl text-white">
+          <button type="button" onclick="searchSpotAddress()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-medium">Rechercher</button>
+        </div>
+        <div id="spotSearchResults" class="hidden mt-1 bg-slate-950 border border-slate-800 rounded-xl max-h-32 overflow-y-auto text-xs"></div>
+      </div>
+
+      <!-- Spot Parent filtrable -->
+      <div class="relative">
         <label class="block text-xs font-semibold text-slate-400 mb-1">Spot Parent / Macro-Spot (Optionnel)</label>
-        <select id="spotParentSelect" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white"></select>
+        <input type="hidden" id="spotParentId">
+        <input type="text" id="spotParentSearch" onfocus="filterSpotParentOptions()" oninput="filterSpotParentOptions()" placeholder="Chercher un spot parent (Trié par proximité)..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
+        <div id="spotParentDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-800 rounded-xl shadow-xl z-50 max-h-40 overflow-y-auto text-xs"></div>
       </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-400 mb-1">Rattachement Transit (Optionnel)</label>
-        <select id="spotTargetSelect" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white"></select>
+
+      <!-- Rattachement Jour / Transit Unifié avec Localisation Hôtel -->
+      <div class="relative">
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Rattachement Planning / Transit (Optionnel)</label>
+        <input type="hidden" id="spotTargetType">
+        <input type="hidden" id="spotTargetValue">
+        <input type="text" id="spotTargetSearch" onfocus="filterSpotTargetOptions()" oninput="filterSpotTargetOptions()" placeholder="Libre, Jour (avec secteur/hôtel) ou Transit..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
+        <div id="spotTargetDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-800 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto text-xs"></div>
       </div>
+
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Latitude</label>
-          <input type="number" step="any" id="spotLat" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+          <input type="number" step="any" id="spotLat" required class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Longitude</label>
-          <input type="number" step="any" id="spotLng" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+          <input type="number" step="any" id="spotLng" required class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
         </div>
       </div>
-      <button type="button" onclick="startMapPick('spot')" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center">
+      <button type="button" onclick="startMapPick('spot')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center">
         <i class="fa-solid fa-map-pin mr-1.5 text-emerald-400"></i> Pointer sur la carte
       </button>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Description / Notes complémentaires</label>
-        <textarea id="spotDesc" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white h-20"></textarea>
+        <textarea id="spotDesc" class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white h-16"></textarea>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">URL / Lien d'information</label>
-        <input type="url" id="spotUrl" placeholder="https://..." class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+        <input type="url" id="spotUrl" placeholder="https://..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
       </div>
       <div>
-        <label class="block text-xs font-semibold text-slate-400 mb-1">Photo (Compression auto max 800px & Extraction EXIF GPS)</label>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Photo (Compression auto max 800px & EXIF GPS)</label>
         <input type="file" accept="image/*" onchange="handlePhotoUpload(event, 'spot')" class="w-full text-xs text-slate-400 py-1">
         <div id="spotPhotoPreview" class="hidden mt-2 flex items-center space-x-3">
-          <img id="spotImgThumb" class="w-24 h-24 object-cover rounded-xl border border-slate-700">
-          <button type="button" onclick="removeSpotImage()" class="bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center">
+          <img id="spotImgThumb" class="w-20 h-20 object-cover rounded-xl border border-slate-700">
+          <button type="button" onclick="removeSpotImage()" class="bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center">
             <i class="fa-solid fa-trash-can mr-1.5"></i> Supprimer l'image
           </button>
         </div>
@@ -430,12 +450,20 @@
   </div>
 
   <div id="hotelModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <form id="hotelForm" onsubmit="saveHotel(event)" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-100 space-y-3.5">
+    <form id="hotelForm" onsubmit="saveHotel(event)" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-100 space-y-3.5 max-h-[90vh] overflow-y-auto">
       <h3 id="hotelModalTitle" class="text-base font-bold">Ajouter / Éditer un Hébergement</h3>
       <input type="hidden" id="hotelId">
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Nom du logement <span class="text-red-400">*</span></label>
         <input type="text" id="hotelName" required placeholder="Nom de l'hébergement..." class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Rechercher une adresse / Lieu</label>
+        <div class="flex space-x-2">
+          <input type="text" id="hotelSearchQuery" placeholder="Ex: Ibis Manosque" class="w-full px-3.5 py-2 text-xs border border-slate-700 bg-slate-800 rounded-xl text-white">
+          <button type="button" onclick="searchHotelAddress()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-medium">Rechercher</button>
+        </div>
+        <div id="hotelSearchResults" class="hidden mt-1 bg-slate-950 border border-slate-800 rounded-xl max-h-32 overflow-y-auto text-xs"></div>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Rattachement Zone <span class="text-red-400">*</span></label>
@@ -446,35 +474,35 @@
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Nombre de nuitées <span class="text-red-400">*</span></label>
         <div class="flex items-center space-x-2">
-          <button type="button" onclick="adjustHotelNights(-1)" class="bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold">-</button>
-          <input type="number" id="hotelNights" value="1" min="1" required class="w-full text-center px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white font-mono font-bold">
-          <button type="button" onclick="adjustHotelNights(1)" class="bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold">+</button>
+          <button type="button" onclick="adjustHotelNights(-1)" class="bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold">-</button>
+          <input type="number" id="hotelNights" value="1" min="1" required class="w-full text-center px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white font-mono font-bold">
+          <button type="button" onclick="adjustHotelNights(1)" class="bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold">+</button>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Latitude <span class="text-red-400">*</span></label>
-          <input type="number" step="any" id="hotelLat" required placeholder="Ex: 45.9237" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+          <input type="number" step="any" id="hotelLat" required placeholder="Ex: 45.9237" class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Longitude <span class="text-red-400">*</span></label>
-          <input type="number" step="any" id="hotelLng" required placeholder="Ex: 6.8694" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+          <input type="number" step="any" id="hotelLng" required placeholder="Ex: 6.8694" class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
         </div>
       </div>
-      <button type="button" onclick="startMapPick('hotel')" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center">
+      <button type="button" onclick="startMapPick('hotel')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center">
         <i class="fa-solid fa-map-pin mr-1.5 text-blue-400"></i> Pointer sur la carte
       </button>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Description / Notes & Réservation</label>
-        <textarea id="hotelDesc" placeholder="Notes, code réservation..." class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white h-20"></textarea>
+        <textarea id="hotelDesc" placeholder="Notes, code réservation..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white h-16"></textarea>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">URL / Lien d'information</label>
-        <input type="url" id="hotelUrl" placeholder="https://..." class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+        <input type="url" id="hotelUrl" placeholder="https://..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Rayon de confort (km) — Alerte distance</label>
-        <input type="number" id="hotelRadiusKm" value="15" min="1" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+        <input type="number" id="hotelRadiusKm" value="15" min="1" class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
       </div>
       <div class="flex justify-end space-x-3 pt-2">
         <button type="button" onclick="closeModal('hotelModal')" class="px-4 py-2.5 text-slate-400 hover:bg-slate-800 rounded-xl text-xs font-medium">Annuler</button>
@@ -484,12 +512,20 @@
   </div>
 
   <div id="bonPlanModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <form id="bonPlanForm" onsubmit="saveBonPlan(event)" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-100 space-y-3.5">
+    <form id="bonPlanForm" onsubmit="saveBonPlan(event)" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-100 space-y-3.5 max-h-[90vh] overflow-y-auto">
       <h3 id="bonPlanModalTitle" class="text-base font-bold">Ajouter / Éditer un Bon Plan</h3>
       <input type="hidden" id="bonPlanId">
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Titre du Bon Plan</label>
         <input type="text" id="bonPlanTitle" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Rechercher une adresse / Lieu</label>
+        <div class="flex space-x-2">
+          <input type="text" id="bpSearchQuery" placeholder="Ex: Restaurant de la plage" class="w-full px-3.5 py-2 text-xs border border-slate-700 bg-slate-800 rounded-xl text-white">
+          <button type="button" onclick="searchBpAddress()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-medium">Rechercher</button>
+        </div>
+        <div id="bpSearchResults" class="hidden mt-1 bg-slate-950 border border-slate-800 rounded-xl max-h-32 overflow-y-auto text-xs"></div>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Catégorie</label>
@@ -499,30 +535,36 @@
           <option value="Conseil pratique">💡 Conseil pratique</option>
         </select>
       </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-400 mb-1">Rattachement Transit (Optionnel)</label>
-        <select id="bonPlanTargetSelect" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white"></select>
+
+      <!-- Rattachement Jour / Transit Unifié Bon Plan avec Localisation Hôtel -->
+      <div class="relative">
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Rattachement Planning / Transit (Optionnel)</label>
+        <input type="hidden" id="bpTargetType">
+        <input type="hidden" id="bpTargetValue">
+        <input type="text" id="bpTargetSearch" onfocus="filterBpTargetOptions()" oninput="filterBpTargetOptions()" placeholder="Libre, Jour (avec secteur/hôtel) ou Transit..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
+        <div id="bpTargetDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-800 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto text-xs"></div>
       </div>
+
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Latitude</label>
-          <input type="number" step="any" id="bonPlanLat" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+          <input type="number" step="any" id="bonPlanLat" required class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1">Longitude</label>
-          <input type="number" step="any" id="bonPlanLng" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+          <input type="number" step="any" id="bonPlanLng" required class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
         </div>
       </div>
-      <button type="button" onclick="startMapPick('bonplan')" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center">
+      <button type="button" onclick="startMapPick('bonplan')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center">
         <i class="fa-solid fa-map-pin mr-1.5 text-amber-400"></i> Pointer sur la carte
       </button>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Description / Notes</label>
-        <textarea id="bonPlanDesc" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white h-20"></textarea>
+        <textarea id="bonPlanDesc" class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white h-16"></textarea>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">URL / Lien d'information</label>
-        <input type="url" id="bonPlanUrl" placeholder="https://..." class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
+        <input type="url" id="bonPlanUrl" placeholder="https://..." class="w-full px-3.5 py-2 border border-slate-700 bg-slate-800 rounded-xl text-xs text-white">
       </div>
       <div class="flex justify-end space-x-3 pt-2">
         <button type="button" onclick="closeModal('bonPlanModal')" class="px-4 py-2.5 text-slate-400 hover:bg-slate-800 rounded-xl text-xs font-medium">Annuler</button>
@@ -680,6 +722,18 @@
 
       map.on('click', onMapClick);
 
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#spotParentSearch') && !e.target.closest('#spotParentDropdown')) {
+          document.getElementById('spotParentDropdown')?.classList.add('hidden');
+        }
+        if (!e.target.closest('#spotTargetSearch') && !e.target.closest('#spotTargetDropdown')) {
+          document.getElementById('spotTargetDropdown')?.classList.add('hidden');
+        }
+        if (!e.target.closest('#bpTargetSearch') && !e.target.closest('#bpTargetDropdown')) {
+          document.getElementById('bpTargetDropdown')?.classList.add('hidden');
+        }
+      });
+
       const openPrintRoadbookBtn = document.getElementById('openPrintRoadbookBtn');
       const closeRoadbookBtn = document.getElementById('closeRoadbookBtn');
       const triggerPrintBtn = document.getElementById('triggerPrintBtn');
@@ -792,7 +846,6 @@
       return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     }
 
-    // Calcul visuel du secteur / hébergement le plus proche à vol d'oiseau
     function getNearestZoneInfo(lat, lng) {
       if (!appState.zones || appState.zones.length === 0) return null;
       let minDistance = Infinity;
@@ -893,6 +946,22 @@
       transits.push({ id: 'transit_last_arr', name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: compLast ? compLast.checkoutDay : 0, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr' });
 
       return transits;
+    }
+
+    // Helper pour récupérer le contexte géographique d'une journée (Secteur + Hôtel)
+    function getDayContextDescription(curDay) {
+      const computed = getZoneComputedDates();
+      const currentZone = appState.zones.find(z => {
+        const comp = computed[z.id];
+        return comp && curDay >= comp.checkinDay && curDay <= comp.checkoutDay;
+      });
+      if (!currentZone) return "Hors secteur (Départ / Arrivée)";
+      const activeHotel = appState.hotels.find(h => {
+        const comp = computed[h.zoneId];
+        return comp && curDay >= comp.checkinDay && curDay < comp.checkoutDay;
+      });
+      const hotelStr = activeHotel ? ` / Hôtel : ${activeHotel.name}` : '';
+      return `Secteur : ${currentZone.name}${hotelStr}`;
     }
 
     function calculateTransitDistances(transit) {
@@ -1759,7 +1828,6 @@
           attachmentBadges += `<span class="text-[11px] bg-indigo-950 text-indigo-300 border border-indigo-800/40 px-2 py-0.5 rounded-md font-medium">Jours : ${assignedDays.join(', ')}</span>`;
         }
 
-        // Calcul visuel dynamique de la zone la plus proche à vol d'oiseau
         let nearestZoneBadge = '';
         if (!s.target && assignedDays.length === 0) {
           attachmentBadges = '<span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md font-medium">Libre</span>';
@@ -1771,6 +1839,20 @@
 
         const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
         const subSpots = appState.spots.filter(child => child.parentId === s.id);
+
+        // Construction dynamique des options pour le select universel (Transits + Jours)
+        let assignmentSelectOptions = '<option value="">-- Rattacher... --</option>';
+        validTransits.forEach(t => {
+          const isSelected = s.target === t.id ? 'selected' : '';
+          assignmentSelectOptions += `<option value="transit:${t.id}" ${isSelected}>Transit: ${t.name}</option>`;
+        });
+        const totalDays = getTotalDays();
+        for (let d = 0; d < totalDays; d++) {
+          const isAssignedToDay = assignedDays.includes(`J+${d}`);
+          const isSelected = isAssignedToDay ? 'selected' : '';
+          const contextDesc = getDayContextDescription(d);
+          assignmentSelectOptions += `<option value="day:${d}" ${isSelected}>Jour J+${d} (${deltaToDateStr(d)}) - ${contextDesc}</option>`;
+        }
 
         const el = document.createElement('div');
         el.id = `card-spot-${s.id}`;
@@ -1797,9 +1879,8 @@
               <button onclick="createSubSpot('${s.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl transition text-xs font-semibold" title="Ajouter un sous-spot"><i class="fa-solid fa-folder-plus mr-1"></i>+ Sous-spot</button>
               <button onclick="deleteSpot('${s.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-red-400 rounded-xl transition" title="Supprimer définitivement"><i class="fa-solid fa-trash-can"></i></button>
             </div>
-            <select onchange="assignSpot('${s.id}', this.value)" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:border-indigo-500 font-medium">
-              <option value="">-- Rattacher au Transit... --</option>
-              ${validTransits.map(t => `<option value="${t.id}" ${s.target === t.id ? 'selected' : ''}>Transit: ${t.name}</option>`).join('')}
+            <select onchange="universalAssignSpot('${s.id}', this.value)" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:border-indigo-500 font-medium">
+              ${assignmentSelectOptions}
             </select>
           </div>
         `;
@@ -1811,22 +1892,35 @@
         let bpAttachmentLabel = '<span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md font-medium">Libre</span>';
         let nearestZoneBadge = '';
 
+        let assignedDaysBp = [];
+        Object.keys(appState.dailyBonsPlans).forEach(d => {
+          if (appState.dailyBonsPlans[d] && appState.dailyBonsPlans[d].includes(bp.id)) assignedDaysBp.push(`J+${d}`);
+        });
+
         if (bp.target) {
           const tObj = validTransits.find(t => t.id === bp.target);
           bpAttachmentLabel = `<span class="text-[11px] bg-amber-950/60 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded-md font-medium">Transit : ${tObj ? tObj.name : bp.target}</span>`;
+        } else if (assignedDaysBp.length > 0) {
+          bpAttachmentLabel = `<span class="text-[11px] bg-indigo-950 text-indigo-300 border border-indigo-800/40 px-2 py-0.5 rounded-md font-medium">Jours : ${assignedDaysBp.join(', ')}</span>`;
         } else {
-          let foundDays = [];
-          Object.keys(appState.dailyBonsPlans).forEach(d => {
-            if (appState.dailyBonsPlans[d] && appState.dailyBonsPlans[d].includes(bp.id)) foundDays.push(`J+${d}`);
-          });
-          if (foundDays.length > 0) {
-            bpAttachmentLabel = `<span class="text-[11px] bg-indigo-950 text-indigo-300 border border-indigo-800/40 px-2 py-0.5 rounded-md font-medium">Jours : ${foundDays.join(', ')}</span>`;
-          } else {
-            const nearest = getNearestZoneInfo(bp.lat, bp.lng);
-            if (nearest) {
-              nearestZoneBadge = `<span class="text-[11px] bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 px-2 py-0.5 rounded-md font-medium flex items-center" title="Proximité à vol d'oiseau calculée"><i class="fa-solid fa-location-crosshairs mr-1 text-indigo-400"></i>📍 Proche : ${nearest.zoneName} (${nearest.distanceKm.toFixed(1)} km)</span>`;
-            }
+          const nearest = getNearestZoneInfo(bp.lat, bp.lng);
+          if (nearest) {
+            nearestZoneBadge = `<span class="text-[11px] bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 px-2 py-0.5 rounded-md font-medium flex items-center" title="Proximité à vol d'oiseau calculée"><i class="fa-solid fa-location-crosshairs mr-1 text-indigo-400"></i>📍 Proche : ${nearest.zoneName} (${nearest.distanceKm.toFixed(1)} km)</span>`;
           }
+        }
+
+        // Construction dynamique des options pour le select universel (Transits + Jours) des bons plans
+        let bpAssignmentOptions = '<option value="">-- Rattacher... --</option>';
+        validTransits.forEach(t => {
+          const isSelected = bp.target === t.id ? 'selected' : '';
+          bpAssignmentOptions += `<option value="transit:${t.id}" ${isSelected}>Transit: ${t.name}</option>`;
+        });
+        const totalDays = getTotalDays();
+        for (let d = 0; d < totalDays; d++) {
+          const isAssignedToDay = assignedDaysBp.includes(`J+${d}`);
+          const isSelected = isAssignedToDay ? 'selected' : '';
+          const contextDesc = getDayContextDescription(d);
+          bpAssignmentOptions += `<option value="day:${d}" ${isSelected}>Jour J+${d} (${deltaToDateStr(d)}) - ${contextDesc}</option>`;
         }
 
         const el = document.createElement('div');
@@ -1848,9 +1942,8 @@
               <button onclick="editBonPlan('${bp.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-indigo-400 rounded-xl transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
               <button onclick="deleteBonPlan('${bp.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-red-400 rounded-xl transition" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
             </div>
-            <select onchange="assignBonPlan('${bp.id}', this.value)" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:border-indigo-500 font-medium">
-              <option value="">-- Rattacher au Transit... --</option>
-              ${validTransits.map(t => `<option value="${t.id}" ${bp.target === t.id ? 'selected' : ''}>Transit: ${t.name}</option>`).join('')}
+            <select onchange="universalAssignBonPlan('${bp.id}', this.value)" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:border-indigo-500 font-medium">
+              ${bpAssignmentOptions}
             </select>
           </div>
         `;
@@ -2012,6 +2105,202 @@
           resultsContainer.classList.add('hidden');
         };
         resultsContainer.appendChild(div);
+      });
+    }
+
+    async function searchSpotAddress() {
+      const q = document.getElementById('spotSearchQuery').value;
+      if (!q) return;
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const container = document.getElementById('spotSearchResults');
+      container.innerHTML = '';
+      container.classList.remove('hidden');
+
+      data.slice(0, 5).forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-300';
+        div.innerText = item.display_name;
+        div.onclick = () => {
+          if (!document.getElementById('spotName').value) document.getElementById('spotName').value = item.display_name.split(',')[0];
+          document.getElementById('spotLat').value = parseFloat(item.lat).toFixed(6);
+          document.getElementById('spotLng').value = parseFloat(item.lon).toFixed(6);
+          container.classList.add('hidden');
+        };
+        container.appendChild(div);
+      });
+    }
+
+    async function searchHotelAddress() {
+      const q = document.getElementById('hotelSearchQuery').value;
+      if (!q) return;
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const container = document.getElementById('hotelSearchResults');
+      container.innerHTML = '';
+      container.classList.remove('hidden');
+
+      data.slice(0, 5).forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-300';
+        div.innerText = item.display_name;
+        div.onclick = () => {
+          if (!document.getElementById('hotelName').value) document.getElementById('hotelName').value = item.display_name.split(',')[0];
+          document.getElementById('hotelLat').value = parseFloat(item.lat).toFixed(6);
+          document.getElementById('hotelLng').value = parseFloat(item.lon).toFixed(6);
+          container.classList.add('hidden');
+        };
+        container.appendChild(div);
+      });
+    }
+
+    async function searchBpAddress() {
+      const q = document.getElementById('bpSearchQuery').value;
+      if (!q) return;
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const container = document.getElementById('bpSearchResults');
+      container.innerHTML = '';
+      container.classList.remove('hidden');
+
+      data.slice(0, 5).forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-300';
+        div.innerText = item.display_name;
+        div.onclick = () => {
+          if (!document.getElementById('bonPlanTitle').value) document.getElementById('bonPlanTitle').value = item.display_name.split(',')[0];
+          document.getElementById('bonPlanLat').value = parseFloat(item.lat).toFixed(6);
+          document.getElementById('bonPlanLng').value = parseFloat(item.lon).toFixed(6);
+          container.classList.add('hidden');
+        };
+        container.appendChild(div);
+      });
+    }
+
+    function filterSpotParentOptions() {
+      const currentSpotId = document.getElementById('spotId').value;
+      const currentLat = parseFloat(document.getElementById('spotLat').value) || null;
+      const currentLng = parseFloat(document.getElementById('spotLng').value) || null;
+      const searchText = (document.getElementById('spotParentSearch').value || '').toLowerCase();
+      const container = document.getElementById('spotParentDropdown');
+
+      container.innerHTML = '';
+      container.classList.remove('hidden');
+
+      const noneDiv = document.createElement('div');
+      noneDiv.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-400 font-semibold';
+      noneDiv.innerText = '-- Aucun (Spot Autonome / Macro) --';
+      noneDiv.onclick = () => {
+        document.getElementById('spotParentId').value = '';
+        document.getElementById('spotParentSearch').value = '';
+        container.classList.add('hidden');
+      };
+      container.appendChild(noneDiv);
+
+      let eligible = appState.spots.filter(s => s.id !== currentSpotId && !s.parentId);
+      
+      eligible.forEach(s => {
+        s._dist = (currentLat !== null && currentLng !== null) ? haversineDistanceKm(currentLat, currentLng, s.lat, s.lng) : Infinity;
+      });
+
+      eligible.sort((a, b) => {
+        if (a._dist !== b._dist) return a._dist - b._dist;
+        return a.name.localeCompare(b.name);
+      });
+
+      const filtered = eligible.filter(s => s.name.toLowerCase().includes(searchText));
+
+      filtered.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-200 flex justify-between items-center';
+        const distStr = s._dist !== Infinity ? `<span class="text-[10px] text-indigo-400 font-mono">${s._dist.toFixed(1)} km</span>` : '';
+        div.innerHTML = `<span>${s.name}</span>${distStr}`;
+        div.onclick = () => {
+          document.getElementById('spotParentId').value = s.id;
+          document.getElementById('spotParentSearch').value = s.name;
+          container.classList.add('hidden');
+        };
+        container.appendChild(div);
+      });
+    }
+
+    function filterSpotTargetOptions() {
+      const searchText = (document.getElementById('spotTargetSearch').value || '').toLowerCase();
+      const container = document.getElementById('spotTargetDropdown');
+
+      container.innerHTML = '';
+      container.classList.remove('hidden');
+
+      const addOption = (label, type, val) => {
+        const div = document.createElement('div');
+        div.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-200 text-xs';
+        div.innerText = label;
+        div.onclick = () => {
+          document.getElementById('spotTargetType').value = type;
+          document.getElementById('spotTargetValue').value = val;
+          document.getElementById('spotTargetSearch').value = label;
+          container.classList.add('hidden');
+        };
+        container.appendChild(div);
+      };
+
+      if ("libre".includes(searchText)) addOption('-- Aucun (Libre) --', '', '');
+
+      // Options Jours enrichies avec le secteur et l'hôtel
+      const totalDays = getTotalDays();
+      for (let d = 0; d < totalDays; d++) {
+        const contextDesc = getDayContextDescription(d);
+        const label = `🗓️ Jour J+${d} (${deltaToDateStr(d)}) — ${contextDesc}`;
+        if (label.toLowerCase().includes(searchText)) {
+          addOption(label, 'day', d);
+        }
+      }
+
+      // Options Transits
+      getTransits().forEach(t => {
+        const label = `🚗 Transit: ${t.name}`;
+        if (label.toLowerCase().includes(searchText)) {
+          addOption(label, 'transit', t.id);
+        }
+      });
+    }
+
+    function filterBpTargetOptions() {
+      const searchText = (document.getElementById('bpTargetSearch').value || '').toLowerCase();
+      const container = document.getElementById('bpTargetDropdown');
+
+      container.innerHTML = '';
+      container.classList.remove('hidden');
+
+      const addOption = (label, type, val) => {
+        const div = document.createElement('div');
+        div.className = 'p-2 hover:bg-slate-900 cursor-pointer border-b border-slate-800 text-slate-200 text-xs';
+        div.innerText = label;
+        div.onclick = () => {
+          document.getElementById('bpTargetType').value = type;
+          document.getElementById('bpTargetValue').value = val;
+          document.getElementById('bpTargetSearch').value = label;
+          container.classList.add('hidden');
+        };
+        container.appendChild(div);
+      };
+
+      if ("libre".includes(searchText)) addOption('-- Aucun (Libre) --', '', '');
+
+      const totalDays = getTotalDays();
+      for (let d = 0; d < totalDays; d++) {
+        const contextDesc = getDayContextDescription(d);
+        const label = `🗓️ Jour J+${d} (${deltaToDateStr(d)}) — ${contextDesc}`;
+        if (label.toLowerCase().includes(searchText)) {
+          addOption(label, 'day', d);
+        }
+      }
+
+      getTransits().forEach(t => {
+        const label = `🚗 Transit: ${t.name}`;
+        if (label.toLowerCase().includes(searchText)) {
+          addOption(label, 'transit', t.id);
+        }
       });
     }
 
@@ -2194,8 +2483,15 @@
       document.getElementById('spotPhotoPreview').classList.add('hidden');
       delete document.getElementById('spotForm').dataset.imageBase64;
       document.getElementById('spotModalTitle').innerText = parentId ? "Ajouter un Sous-Spot" : "Ajouter un Spot";
-      populateSpotTargetSelect();
-      populateSpotParentSelect('', parentId);
+      
+      document.getElementById('spotParentId').value = parentId;
+      const parentObj = parentId ? appState.spots.find(s => s.id === parentId) : null;
+      document.getElementById('spotParentSearch').value = parentObj ? parentObj.name : '';
+      
+      document.getElementById('spotTargetType').value = '';
+      document.getElementById('spotTargetValue').value = '';
+      document.getElementById('spotTargetSearch').value = '';
+
       if (defaultName) document.getElementById('spotName').value = defaultName;
       if (defaultDesc) document.getElementById('spotDesc').value = defaultDesc;
       openModal('spotModal');
@@ -2212,16 +2508,41 @@
     function editSpot(id) {
       const spot = appState.spots.find(s => s.id === id);
       if (!spot) return;
-      populateSpotTargetSelect();
-      populateSpotParentSelect(spot.id, spot.parentId || '');
 
       document.getElementById('spotId').value = spot.id;
       document.getElementById('spotName').value = spot.name;
-      document.getElementById('spotTargetSelect').value = spot.target || '';
       document.getElementById('spotLat').value = spot.lat;
       document.getElementById('spotLng').value = spot.lng;
       document.getElementById('spotDesc').value = spot.desc || '';
       document.getElementById('spotUrl').value = spot.url || '';
+
+      document.getElementById('spotParentId').value = spot.parentId || '';
+      const parentObj = spot.parentId ? appState.spots.find(s => s.id === spot.parentId) : null;
+      document.getElementById('spotParentSearch').value = parentObj ? parentObj.name : '';
+
+      let targetType = '';
+      let targetVal = '';
+      let targetLabel = '';
+
+      if (spot.target) {
+        targetType = 'transit';
+        targetVal = spot.target;
+        const tObj = getTransits().find(t => t.id === spot.target);
+        targetLabel = `🚗 Transit: ${tObj ? tObj.name : spot.target}`;
+      } else {
+        Object.keys(appState.dailyItineraries).forEach(d => {
+          if (appState.dailyItineraries[d] && appState.dailyItineraries[d].includes(spot.id)) {
+            targetType = 'day';
+            targetVal = d;
+            const contextDesc = getDayContextDescription(parseInt(d));
+            targetLabel = `🗓️ Jour J+${d} (${deltaToDateStr(d)}) — ${contextDesc}`;
+          }
+        });
+      }
+
+      document.getElementById('spotTargetType').value = targetType;
+      document.getElementById('spotTargetValue').value = targetVal;
+      document.getElementById('spotTargetSearch').value = targetLabel;
 
       if (spot.imageBase64) {
         document.getElementById('spotImgThumb').src = spot.imageBase64;
@@ -2236,33 +2557,22 @@
       openModal('spotModal');
     }
 
-    function populateSpotTargetSelect() {
-      const select = document.getElementById('spotTargetSelect');
-      select.innerHTML = '<option value="">-- Aucun (Libre) --</option>';
-      getTransits().forEach(t => { select.innerHTML += `<option value="${t.id}">Transit: ${t.name}</option>`; });
-    }
-
-    function populateSpotParentSelect(currentSpotId = '', selectedParentId = '') {
-      const select = document.getElementById('spotParentSelect');
-      select.innerHTML = '<option value="">-- Aucun (Spot Autonome / Macro) --</option>';
-      appState.spots.forEach(s => {
-        if (s.id !== currentSpotId && !s.parentId) {
-          select.innerHTML += `<option value="${s.id}" ${s.id === selectedParentId ? 'selected' : ''}>${s.name}</option>`;
-        }
-      });
-    }
-
     function saveSpot(e) {
       e.preventDefault();
       const id = document.getElementById('spotId').value || 's_' + Date.now();
       const name = document.getElementById('spotName').value;
-      const parentId = document.getElementById('spotParentSelect').value || '';
-      const target = document.getElementById('spotTargetSelect').value;
+      const parentId = document.getElementById('spotParentId').value || '';
       const lat = parseFloat(document.getElementById('spotLat').value);
       const lng = parseFloat(document.getElementById('spotLng').value);
       const desc = document.getElementById('spotDesc').value;
       const url = document.getElementById('spotUrl').value;
       
+      const targetType = document.getElementById('spotTargetType').value;
+      const targetValue = document.getElementById('spotTargetValue').value;
+
+      let target = '';
+      if (targetType === 'transit') target = targetValue;
+
       let imageBase64 = null;
       if (document.getElementById('spotForm').dataset.imageBase64) {
         imageBase64 = document.getElementById('spotForm').dataset.imageBase64;
@@ -2274,16 +2584,50 @@
       if (existingIndex >= 0) appState.spots[existingIndex] = spotData;
       else appState.spots.push(spotData);
 
+      Object.keys(appState.dailyItineraries).forEach(d => {
+        appState.dailyItineraries[d] = (appState.dailyItineraries[d] || []).filter(sId => sId !== id);
+      });
+
+      if (targetType === 'day' && targetValue !== '') {
+        const dayNum = parseInt(targetValue);
+        if (!appState.dailyItineraries[dayNum]) appState.dailyItineraries[dayNum] = [];
+        appState.dailyItineraries[dayNum].push(id);
+      }
+
       closeModal('spotModal');
       renderApp();
     }
 
-    function assignSpot(spotId, targetId) {
+    // Fonction de rattachement universel (Transit OU Jour) depuis l'onglet Spots & Bons Plans
+    function universalAssignSpot(spotId, selectionValue) {
       const spot = appState.spots.find(s => s.id === spotId);
-      if (spot) { spot.target = targetId; renderApp(); }
+      if (!spot) return;
+
+      // Nettoyage préalable des liaisons existantes
+      spot.target = '';
+      Object.keys(appState.dailyItineraries).forEach(d => {
+        appState.dailyItineraries[d] = (appState.dailyItineraries[d] || []).filter(id => id !== spotId);
+      });
+
+      if (!selectionValue) {
+        renderApp();
+        return;
+      }
+
+      const [type, val] = selectionValue.split(':');
+      if (type === 'transit') {
+        spot.target = val;
+      } else if (type === 'day') {
+        const dayNum = parseInt(val);
+        if (!appState.dailyItineraries[dayNum]) appState.dailyItineraries[dayNum] = [];
+        if (!appState.dailyItineraries[dayNum].includes(spotId)) {
+          appState.dailyItineraries[dayNum].push(spotId);
+        }
+      }
+      renderApp();
     }
 
-    function unassignSpot(spotId) { assignSpot(spotId, ''); }
+    function unassignSpot(spotId) { universalAssignSpot(spotId, ''); }
 
     function deleteSpot(id) {
       if (!confirm('Voulez-vous supprimer définitivement ce spot du voyage ?')) return;
@@ -2381,7 +2725,9 @@
       document.getElementById('bonPlanForm').reset();
       document.getElementById('bonPlanId').value = '';
       document.getElementById('bonPlanModalTitle').innerText = "Ajouter un Bon Plan";
-      populateBonPlanTargetSelect();
+      document.getElementById('bpTargetType').value = '';
+      document.getElementById('bpTargetValue').value = '';
+      document.getElementById('bpTargetSearch').value = '';
       if (defaultName) document.getElementById('bonPlanTitle').value = defaultName;
       if (defaultDesc) document.getElementById('bonPlanDesc').value = defaultDesc;
       openModal('bonPlanModal');
@@ -2390,24 +2736,41 @@
     function editBonPlan(id) {
       const bp = appState.bonsPlans.find(b => b.id === id);
       if (!bp) return;
-      populateBonPlanTargetSelect();
 
       document.getElementById('bonPlanId').value = bp.id;
       document.getElementById('bonPlanTitle').value = bp.title;
       document.getElementById('bonPlanCategory').value = bp.category;
-      document.getElementById('bonPlanTargetSelect').value = bp.target || '';
       document.getElementById('bonPlanLat').value = bp.lat;
       document.getElementById('bonPlanLng').value = bp.lng;
       document.getElementById('bonPlanDesc').value = bp.desc || '';
       document.getElementById('bonPlanUrl').value = bp.url || '';
+
+      let targetType = '';
+      let targetVal = '';
+      let targetLabel = '';
+
+      if (bp.target) {
+        targetType = 'transit';
+        targetVal = bp.target;
+        const tObj = getTransits().find(t => t.id === bp.target);
+        targetLabel = `🚗 Transit: ${tObj ? tObj.name : bp.target}`;
+      } else {
+        Object.keys(appState.dailyBonsPlans).forEach(d => {
+          if (appState.dailyBonsPlans[d] && appState.dailyBonsPlans[d].includes(bp.id)) {
+            targetType = 'day';
+            targetVal = d;
+            const contextDesc = getDayContextDescription(parseInt(d));
+            targetLabel = `🗓️ Jour J+${d} (${deltaToDateStr(d)}) — ${contextDesc}`;
+          }
+        });
+      }
+
+      document.getElementById('bpTargetType').value = targetType;
+      document.getElementById('bpTargetValue').value = targetVal;
+      document.getElementById('bpTargetSearch').value = targetLabel;
+
       document.getElementById('bonPlanModalTitle').innerText = "Éditer le Bon Plan";
       openModal('bonPlanModal');
-    }
-
-    function populateBonPlanTargetSelect() {
-      const select = document.getElementById('bonPlanTargetSelect');
-      select.innerHTML = '<option value="">-- Aucun (Libre) --</option>';
-      getTransits().forEach(t => { select.innerHTML += `<option value="${t.id}">${t.name}</option>`; });
     }
 
     function saveBonPlan(e) {
@@ -2415,11 +2778,16 @@
       const id = document.getElementById('bonPlanId').value || 'bp_' + Date.now();
       const title = document.getElementById('bonPlanTitle').value;
       const category = document.getElementById('bonPlanCategory').value;
-      const target = document.getElementById('bonPlanTargetSelect').value;
       const lat = parseFloat(document.getElementById('bonPlanLat').value);
       const lng = parseFloat(document.getElementById('bonPlanLng').value);
       const desc = document.getElementById('bonPlanDesc').value;
       const url = document.getElementById('bonPlanUrl').value;
+
+      const targetType = document.getElementById('bpTargetType').value;
+      const targetValue = document.getElementById('bpTargetValue').value;
+
+      let target = '';
+      if (targetType === 'transit') target = targetValue;
 
       const bpData = { id, title, category, target, lat, lng, desc, url };
       const existingIndex = appState.bonsPlans.findIndex(bp => bp.id === id);
@@ -2427,16 +2795,49 @@
       if (existingIndex >= 0) appState.bonsPlans[existingIndex] = bpData;
       else appState.bonsPlans.push(bpData);
 
+      Object.keys(appState.dailyBonsPlans).forEach(d => {
+        appState.dailyBonsPlans[d] = (appState.dailyBonsPlans[d] || []).filter(bId => bId !== id);
+      });
+
+      if (targetType === 'day' && targetValue !== '') {
+        const dayNum = parseInt(targetValue);
+        if (!appState.dailyBonsPlans[dayNum]) appState.dailyBonsPlans[dayNum] = [];
+        appState.dailyBonsPlans[dayNum].push(id);
+      }
+
       closeModal('bonPlanModal');
       renderApp();
     }
 
-    function assignBonPlan(bpId, targetId) {
+    // Fonction de rattachement universel (Transit OU Jour) pour les bons plans depuis l'onglet Spots & Bons Plans
+    function universalAssignBonPlan(bpId, selectionValue) {
       const bp = appState.bonsPlans.find(b => b.id === bpId);
-      if (bp) { bp.target = targetId; renderApp(); }
+      if (!bp) return;
+
+      bp.target = '';
+      Object.keys(appState.dailyBonsPlans).forEach(d => {
+        appState.dailyBonsPlans[d] = (appState.dailyBonsPlans[d] || []).filter(id => id !== bpId);
+      });
+
+      if (!selectionValue) {
+        renderApp();
+        return;
+      }
+
+      const [type, val] = selectionValue.split(':');
+      if (type === 'transit') {
+        bp.target = val;
+      } else if (type === 'day') {
+        const dayNum = parseInt(val);
+        if (!appState.dailyBonsPlans[dayNum]) appState.dailyBonsPlans[dayNum] = [];
+        if (!appState.dailyBonsPlans[dayNum].includes(bpId)) {
+          appState.dailyBonsPlans[dayNum].push(bpId);
+        }
+      }
+      renderApp();
     }
 
-    function unassignBonPlan(bpId) { assignBonPlan(bpId, ''); }
+    function unassignBonPlan(bpId) { universalAssignBonPlan(bpId, ''); }
 
     function deleteBonPlan(id) {
       if (!confirm('Voulez-vous supprimer définitivement ce bon plan du voyage ?')) return;
@@ -2788,7 +3189,7 @@
     async function exportZIP() {
       const zip = new JSZip();
       zip.file("voyage.json", JSON.stringify(appState, null, 2));
-      const manifest = { version: "2.50", exportedAt: new Date().toISOString(), totalSpots: appState.spots.length, totalZones: appState.zones.length };
+      const manifest = { version: "2.61", exportedAt: new Date().toISOString(), totalSpots: appState.spots.length, totalZones: appState.zones.length };
       zip.file("manifest.json", JSON.stringify(manifest, null, 2));
 
       const content = await zip.generateAsync({ type: "blob" });
