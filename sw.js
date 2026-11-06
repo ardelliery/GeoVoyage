@@ -1,6 +1,7 @@
-const CACHE_NAME = 'geovoyage-v2.1';
+const CACHE_NAME = 'geovoyage-v3.2';
+const TILE_CACHE_NAME = 'geovoyage-tiles-v1';
 
-// Liste des ressources essentielles à mettre en cache lors de l'installation
+// Liste des ressources statiques essentielles de l'application
 const ASSETS_TO_CACHE = [
   './',
   './pvi.html',
@@ -13,24 +14,24 @@ const ASSETS_TO_CACHE = [
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
 ];
 
-// Installation : Mise en cache explicite des fichiers de base
+// Installation : Mise en cache initiale des fichiers de base
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Active immédiatement le nouveau Service Worker
+  self.skipWaiting(); // Force l'activation immédiate du nouveau Service Worker
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Mise en cache des ressources PWA...');
+      console.log('[Service Worker] Mise en cache des actifs statiques...');
       return cache.addAll(ASSETS_TO_CACHE);
-    }).catch(err => console.error('[Service Worker] Erreur au pré-caching:', err))
+    }).catch(err => console.error('[Service Worker] Erreur pré-caching:', err))
   );
 });
 
-// Activation : Nettoyage des anciens caches si la version change
+// Activation : Nettoyage des anciens caches obsolètes
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
+          if (cache !== CACHE_NAME && cache !== TILE_CACHE_NAME) {
             console.log('[Service Worker] Suppression de l\'ancien cache :', cache);
             return caches.delete(cache);
           }
@@ -40,33 +41,51 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Interception des requêtes réseau : Stratégie Cache-First avec Fallback Réseau
+// Interception des requêtes réseau
 self.addEventListener('fetch', (event) => {
-  // Ignorer les requêtes non-GET (ex: POST, extensions)
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+
+  // 1. Gestion spécifique des tuiles OpenStreetMap (Cache-First dédié)
+  if (url.hostname.includes('openstreetmap.org')) {
+    event.respondWith(
+      caches.open(TILE_CACHE_NAME).then((cache) => {
+        return cache.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return fetch(event.request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(event.request, networkResponse.clone());
+            }
+            return networkResponse;
+          }).catch(() => {
+            return new Response('Tuile hors-ligne non disponible', { status: 404, statusText: 'Offline' });
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // 2. Gestion standard pour l'application et ses dépendances (Cache-First avec fallback réseau)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // 1. Si la ressource est déjà dans le cache, on la renvoie immédiatement
       if (cachedResponse) {
         return cachedResponse;
       }
-
-      // 2. Sinon, on va la chercher sur le réseau et on tente de la mettre en cache
       return fetch(event.request).then((networkResponse) => {
-        // Ne mettre en cache que les réponses valides (200 ou opaque pour CDN)
         if (!networkResponse || (networkResponse.status !== 200 && networkResponse.type !== 'opaque')) {
           return networkResponse;
         }
-
         const responseToCache = networkResponse.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseToCache);
         });
-
         return networkResponse;
       }).catch(() => {
-        // 3. Secours hors-ligne : Si la navigation vers une page HTML échoue, renvoyer pvi.html
+        // Fallback de navigation hors-ligne
         if (event.request.mode === 'navigate') {
           return caches.match('./pvi.html') || caches.match('./');
         }

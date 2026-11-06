@@ -384,6 +384,10 @@
         <input type="text" id="spotName" required class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white">
       </div>
       <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Spot Parent / Macro-Spot (Optionnel)</label>
+        <select id="spotParentSelect" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white"></select>
+      </div>
+      <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1">Rattachement Transit (Optionnel)</label>
         <select id="spotTargetSelect" class="w-full px-3.5 py-2.5 border border-slate-700 bg-slate-800 rounded-xl text-sm text-white"></select>
       </div>
@@ -603,7 +607,7 @@
         { id: 'h_ibis_manosque', name: 'IBIS Manosque', zoneId: 'z_manosque', desc: '3 nuit(s)', nights: 3, lat: 43.8333, lng: 5.7833, radiusKm: 15, url: '' }
       ],
       spots: [
-        { id: 's_beaune', name: 'Beaune', target: 'transit_dep_first', desc: 'Etape spot en transit', lat: 47.0260, lng: 4.8400 }
+        { id: 's_beaune', name: 'Beaune', target: 'transit_dep_first', parentId: '', desc: 'Etape spot en transit', lat: 47.0260, lng: 4.8400 }
       ],
       bonsPlans: [
         { id: 'bp_mouette', title: 'La mouette à vélo', category: 'Conseil pratique', target: 'transit_dep_first', lat: 47.0260, lng: 4.8400, desc: '' },
@@ -641,6 +645,7 @@
           if (!appState.activeTab) appState.activeTab = 'structure';
           if (!appState.viewMode) appState.viewMode = 'designer';
           if (!appState.name) appState.name = "Mon Voyage GeoVoyage";
+          if (appState.spots) appState.spots.forEach(s => { if (s.parentId === undefined) s.parentId = ''; });
           return true;
         }
       } catch (e) {
@@ -726,7 +731,7 @@
         { id: 'h_ibis_manosque', name: 'IBIS Manosque', zoneId: 'z_manosque', desc: '3 nuit(s)', nights: 3, lat: 43.8333, lng: 5.7833, radiusKm: 15, url: '' }
       ];
       appState.spots = [
-        { id: 's_beaune', name: 'Beaune', target: 'transit_dep_first', desc: 'Etape spot en transit', lat: 47.0260, lng: 4.8400 }
+        { id: 's_beaune', name: 'Beaune', target: 'transit_dep_first', parentId: '', desc: 'Etape spot en transit', lat: 47.0260, lng: 4.8400 }
       ];
       appState.transitSpotOrder = {
         'transit_dep_first': ['s_beaune']
@@ -785,6 +790,32 @@
       const dLon = (lon2 - lon1) * Math.PI / 180;
       const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
       return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    // Calcul visuel du secteur / hébergement le plus proche à vol d'oiseau
+    function getNearestZoneInfo(lat, lng) {
+      if (!appState.zones || appState.zones.length === 0) return null;
+      let minDistance = Infinity;
+      let nearestZone = null;
+
+      appState.zones.forEach(zone => {
+        const hotel = appState.hotels.find(h => h.zoneId === zone.id);
+        const refLat = hotel ? hotel.lat : null;
+        const refLng = hotel ? hotel.lng : null;
+
+        if (refLat !== null && refLng !== null) {
+          const dist = haversineDistanceKm(lat, lng, refLat, refLng);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestZone = zone;
+          }
+        }
+      });
+
+      if (nearestZone && minDistance !== Infinity) {
+        return { zoneName: nearestZone.name, color: nearestZone.color, distanceKm: minDistance };
+      }
+      return null;
     }
 
     function deltaToDateStr(deltaDays) {
@@ -1114,6 +1145,7 @@
           const spot = appState.spots.find(s => s.id === spotId);
           if (!spot) return;
           const segDist = dayRoute.segmentsDistances[idx] !== undefined ? dayRoute.segmentsDistances[idx] : 0;
+          const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
           const el = document.createElement('div');
           el.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-sm';
@@ -1121,7 +1153,10 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-2.5 truncate">
                 <span class="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
-                <span class="text-white font-bold text-sm truncate">${spot.name}</span>
+                <div class="truncate">
+                  <span class="text-white font-bold text-sm truncate block">${spot.name}</span>
+                  ${parentSpot ? `<span class="text-[11px] text-indigo-400 font-medium block">↳ Sous-spot de : ${parentSpot.name}</span>` : ''}
+                </div>
               </div>
               <span class="text-xs text-emerald-400 font-mono shrink-0">+${segDist.toFixed(1)} km</span>
             </div>
@@ -1457,7 +1492,11 @@
 
       const addSelect = document.getElementById('addSpotToDaySelect');
       addSelect.innerHTML = '<option value="">-- Choisir un spot --</option>';
-      appState.spots.forEach(s => { addSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
+      appState.spots.forEach(s => { 
+        const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
+        const label = parentSpot ? `↳ ${s.name} (Sous-spot de ${parentSpot.name})` : s.name;
+        addSelect.innerHTML += `<option value="${s.id}">${label}</option>`; 
+      });
 
       const addBpSelect = document.getElementById('addBonPlanToDaySelect');
       addBpSelect.innerHTML = '<option value="">-- Choisir un bon plan --</option>';
@@ -1470,9 +1509,10 @@
       const dayBpIds = appState.dailyBonsPlans[curDay] || [];
 
       let transitBps = [];
+      let activeTransitId = '';
       if (dayRoute.transits && dayRoute.transits.length > 0) {
-        const tId = dayRoute.transits[0].id;
-        transitBps = appState.bonsPlans.filter(bp => bp.target === tId);
+        activeTransitId = dayRoute.transits[0].id;
+        transitBps = appState.bonsPlans.filter(bp => bp.target === activeTransitId);
       }
 
       if (daySpotIds.length === 0 && dayBpIds.length === 0 && transitBps.length === 0 && !dayRoute.originPoint && dayRoute.transitSpots.length === 0 && !activeHotel) {
@@ -1512,6 +1552,8 @@
         if (dayRoute.transitSpots && dayRoute.transitSpots.length > 0) {
           dayRoute.transitSpots.forEach((ts, tIdx) => {
             const transitSegDist = dayRoute.segmentsDistances[tIdx] !== undefined ? dayRoute.segmentsDistances[tIdx] : 0;
+            const parentSpot = ts.parentId ? appState.spots.find(p => p.id === ts.parentId) : null;
+            
             const tItem = document.createElement('div');
             tItem.id = `card-spot-${ts.id}`;
             tItem.className = 'bg-amber-950/20 border border-amber-800/50 rounded-xl p-3 space-y-1 text-xs sm:text-sm';
@@ -1519,11 +1561,16 @@
               <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2 truncate">
                   <span class="w-6 h-6 rounded-full bg-amber-600 text-slate-950 text-xs font-bold flex items-center justify-center shrink-0">T</span>
-                  <span class="text-amber-200 font-semibold truncate">${ts.name} <span class="text-xs text-amber-400">(Transit)</span></span>
+                  <div class="truncate">
+                    <span class="text-amber-200 font-semibold truncate block">${ts.name} <span class="text-xs text-amber-400">(Transit)</span></span>
+                    ${parentSpot ? `<span class="text-[11px] text-indigo-400 font-medium block">↳ Sous-spot de : ${parentSpot.name}</span>` : ''}
+                  </div>
                 </div>
                 <div class="flex items-center space-x-1 shrink-0">
                   <a href="${getGoogleMapsUrl(ts.lat, ts.lng)}" target="_blank" class="p-1.5 text-slate-400 hover:text-emerald-400 transition" title="Maps"><i class="fa-solid fa-map-location-dot"></i></a>
                   <button onclick="editSpot('${ts.id}')" class="p-1.5 text-slate-400 hover:text-indigo-400 transition" title="Modifier"><i class="fa-solid fa-pen-to-square"></i></button>
+                  <button onclick="moveTransitSpot('${activeTransitId}', ${tIdx}, -1)" class="p-1.5 text-slate-400 hover:text-white transition" title="Monter"><i class="fa-solid fa-arrow-up text-xs"></i></button>
+                  <button onclick="moveTransitSpot('${activeTransitId}', ${tIdx}, 1)" class="p-1.5 text-slate-400 hover:text-white transition" title="Descendre"><i class="fa-solid fa-arrow-down text-xs"></i></button>
                   <button onclick="unassignSpot('${ts.id}')" class="p-1.5 text-slate-400 hover:text-amber-400 transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
                 </div>
               </div>
@@ -1541,6 +1588,7 @@
 
           const offsetIndex = (dayRoute.transitSpots ? dayRoute.transitSpots.length : 0) + idx;
           const segDist = dayRoute.segmentsDistances[offsetIndex] !== undefined ? dayRoute.segmentsDistances[offsetIndex] : 0;
+          const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
           const item = document.createElement('div');
           item.id = `card-spot-${spot.id}`;
@@ -1549,7 +1597,10 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-2.5 truncate">
                 <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
-                <span class="text-slate-200 font-semibold truncate">${spot.name}</span>
+                <div class="truncate">
+                  <span class="text-slate-200 font-semibold truncate block">${spot.name}</span>
+                  ${parentSpot ? `<span class="text-[11px] text-indigo-400 font-medium block">↳ Sous-spot de : ${parentSpot.name}</span>` : ''}
+                </div>
               </div>
               <div class="flex items-center space-x-1 shrink-0">
                 <a href="${getGoogleMapsUrl(spot.lat, spot.lng)}" target="_blank" class="p-1.5 text-slate-400 hover:text-emerald-400 transition" title="Maps"><i class="fa-solid fa-map-location-dot"></i></a>
@@ -1656,6 +1707,18 @@
       }
     }
 
+    function moveTransitSpot(transitId, idx, direction) {
+      if (!appState.transitSpotOrder || !appState.transitSpotOrder[transitId]) return;
+      const list = appState.transitSpotOrder[transitId];
+      const targetIdx = idx + direction;
+      if (targetIdx >= 0 && targetIdx < list.length) {
+        const temp = list[idx];
+        list[idx] = list[targetIdx];
+        list[targetIdx] = temp;
+        renderApp();
+      }
+    }
+
     function removeSpotFromDay(day, idx) {
       if (appState.dailyItineraries[day]) {
         appState.dailyItineraries[day].splice(idx, 1);
@@ -1696,28 +1759,42 @@
           attachmentBadges += `<span class="text-[11px] bg-indigo-950 text-indigo-300 border border-indigo-800/40 px-2 py-0.5 rounded-md font-medium">Jours : ${assignedDays.join(', ')}</span>`;
         }
 
+        // Calcul visuel dynamique de la zone la plus proche à vol d'oiseau
+        let nearestZoneBadge = '';
         if (!s.target && assignedDays.length === 0) {
           attachmentBadges = '<span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md font-medium">Libre</span>';
+          const nearest = getNearestZoneInfo(s.lat, s.lng);
+          if (nearest) {
+            nearestZoneBadge = `<span class="text-[11px] bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 px-2 py-0.5 rounded-md font-medium flex items-center" title="Proximité à vol d'oiseau calculée"><i class="fa-solid fa-location-crosshairs mr-1 text-indigo-400"></i>📍 Proche : ${nearest.zoneName} (${nearest.distanceKm.toFixed(1)} km)</span>`;
+          }
         }
+
+        const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
+        const subSpots = appState.spots.filter(child => child.parentId === s.id);
 
         const el = document.createElement('div');
         el.id = `card-spot-${s.id}`;
-        el.className = 'bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex flex-col space-y-2.5 text-xs sm:text-sm shadow-sm';
+        el.className = `bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex flex-col space-y-2.5 text-xs sm:text-sm shadow-sm ${s.parentId ? 'ml-4 border-l-4 border-l-indigo-500' : ''}`;
         el.innerHTML = `
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2.5 truncate">
-              <i class="fa-solid fa-location-dot text-emerald-400 shrink-0"></i>
-              <span class="text-white font-bold truncate">${s.name}</span>
+              <i class="fa-solid ${s.parentId ? 'fa-turn-up rotate-90 text-indigo-400' : 'fa-location-dot text-emerald-400'} shrink-0"></i>
+              <div class="truncate">
+                <span class="text-white font-bold truncate block">${s.name}</span>
+                ${parentSpot ? `<span class="text-[11px] text-indigo-400 font-medium block">↳ Sous-spot de : ${parentSpot.name}</span>` : ''}
+              </div>
             </div>
-            <div class="flex items-center space-x-1 flex-wrap">${attachmentBadges}</div>
+            <div class="flex items-center space-x-1 flex-wrap">${nearestZoneBadge} ${attachmentBadges}</div>
           </div>
           ${s.desc ? `<p class="text-xs text-slate-400">${s.desc}</p>` : ''}
           ${s.url ? `<div><a href="${s.url}" target="_blank" class="text-xs text-indigo-400 hover:underline flex items-center"><i class="fa-solid fa-link mr-1"></i><span class="truncate">${s.url}</span></a></div>` : ''}
+          ${subSpots.length > 0 ? `<div class="text-[11px] bg-slate-900 p-2 rounded-lg text-slate-300 border border-slate-800"><strong>Sous-spots associés (${subSpots.length}) :</strong> ${subSpots.map(sb => sb.name).join(', ')}</div>` : ''}
           ${s.imageBase64 ? `<div><img src="${s.imageBase64}" class="w-32 h-24 object-cover rounded-xl border border-slate-700"></div>` : ''}
           <div class="flex items-center justify-between pt-2 border-t border-slate-800 gap-2 flex-wrap">
             <div class="flex items-center space-x-1.5">
               <a href="${getGoogleMapsUrl(s.lat, s.lng)}" target="_blank" class="p-2 bg-slate-900 hover:bg-slate-800 text-emerald-400 rounded-xl transition" title="Ouvrir dans Google Maps"><i class="fa-solid fa-map-location-dot"></i></a>
               <button onclick="editSpot('${s.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-indigo-400 rounded-xl transition" title="Éditer le spot"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="createSubSpot('${s.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl transition text-xs font-semibold" title="Ajouter un sous-spot"><i class="fa-solid fa-folder-plus mr-1"></i>+ Sous-spot</button>
               <button onclick="deleteSpot('${s.id}')" class="p-2 bg-slate-900 hover:bg-slate-800 text-red-400 rounded-xl transition" title="Supprimer définitivement"><i class="fa-solid fa-trash-can"></i></button>
             </div>
             <select onchange="assignSpot('${s.id}', this.value)" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none focus:border-indigo-500 font-medium">
@@ -1732,6 +1809,8 @@
       bpContainer.innerHTML = appState.bonsPlans.length === 0 ? '<p class="text-xs sm:text-sm text-slate-500 italic">Aucun bon plan créé</p>' : '';
       appState.bonsPlans.forEach(bp => {
         let bpAttachmentLabel = '<span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md font-medium">Libre</span>';
+        let nearestZoneBadge = '';
+
         if (bp.target) {
           const tObj = validTransits.find(t => t.id === bp.target);
           bpAttachmentLabel = `<span class="text-[11px] bg-amber-950/60 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded-md font-medium">Transit : ${tObj ? tObj.name : bp.target}</span>`;
@@ -1742,6 +1821,11 @@
           });
           if (foundDays.length > 0) {
             bpAttachmentLabel = `<span class="text-[11px] bg-indigo-950 text-indigo-300 border border-indigo-800/40 px-2 py-0.5 rounded-md font-medium">Jours : ${foundDays.join(', ')}</span>`;
+          } else {
+            const nearest = getNearestZoneInfo(bp.lat, bp.lng);
+            if (nearest) {
+              nearestZoneBadge = `<span class="text-[11px] bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 px-2 py-0.5 rounded-md font-medium flex items-center" title="Proximité à vol d'oiseau calculée"><i class="fa-solid fa-location-crosshairs mr-1 text-indigo-400"></i>📍 Proche : ${nearest.zoneName} (${nearest.distanceKm.toFixed(1)} km)</span>`;
+            }
           }
         }
 
@@ -1754,7 +1838,7 @@
               <i class="fa-solid fa-lightbulb text-amber-400 shrink-0"></i>
               <span class="text-white font-bold truncate">${bp.title} <span class="text-xs text-amber-400 font-normal">(${bp.category})</span></span>
             </div>
-            ${bpAttachmentLabel}
+            <div class="flex items-center space-x-1 flex-wrap">${nearestZoneBadge} ${bpAttachmentLabel}</div>
           </div>
           ${bp.desc ? `<p class="text-xs text-slate-400">${bp.desc}</p>` : ''}
           ${bp.url ? `<div><a href="${bp.url}" target="_blank" class="text-xs text-indigo-400 hover:underline flex items-center"><i class="fa-solid fa-link mr-1"></i><span class="truncate">${bp.url}</span></a></div>` : ''}
@@ -1810,10 +1894,11 @@
       });
 
       appState.spots.forEach(s => {
+        const isSub = !!s.parentId;
         const m = L.marker([s.lat, s.lng], {
-          icon: L.divIcon({ className: 'custom-div-icon', html: `<div class="custom-leaflet-marker ${s.target ? 'bg-amber-600' : 'bg-emerald-500'}" style="width:26px;height:26px;"><i class="fa-solid fa-location-dot text-xs"></i></div>`, iconSize: [26, 26], iconAnchor: [13, 13] })
+          icon: L.divIcon({ className: 'custom-div-icon', html: `<div class="custom-leaflet-marker ${isSub ? 'bg-indigo-600' : (s.target ? 'bg-amber-600' : 'bg-emerald-500')}" style="width:26px;height:26px;"><i class="fa-solid ${isSub ? 'fa-turn-up rotate-90' : 'fa-location-dot'} text-xs"></i></div>`, iconSize: [26, 26], iconAnchor: [13, 13] })
         }).addTo(map);
-        m.bindPopup(`<b>Spot : ${s.name}</b><br><span class="text-xs text-slate-500">${s.desc || ''}</span><br><button onclick="locateAndHighlightItem('spot', '${s.id}')" class="mt-2 text-xs bg-indigo-600 text-white px-2.5 py-1 rounded">Localiser dans la liste</button>`);
+        m.bindPopup(`<b>Spot : ${s.name}</b> ${isSub ? '<br><span class="text-xs text-indigo-400">(Sous-spot)</span>' : ''}<br><span class="text-xs text-slate-500">${s.desc || ''}</span><br><button onclick="locateAndHighlightItem('spot', '${s.id}')" class="mt-2 text-xs bg-indigo-600 text-white px-2.5 py-1 rounded">Localiser dans la liste</button>`);
         mapMarkers.push(m);
       });
 
@@ -2103,22 +2188,32 @@
       renderApp();
     }
 
-    function openSpotModal(defaultName = '', defaultDesc = '') {
+    function openSpotModal(defaultName = '', defaultDesc = '', parentId = '') {
       document.getElementById('spotForm').reset();
       document.getElementById('spotId').value = '';
       document.getElementById('spotPhotoPreview').classList.add('hidden');
       delete document.getElementById('spotForm').dataset.imageBase64;
-      document.getElementById('spotModalTitle').innerText = "Ajouter un Spot";
+      document.getElementById('spotModalTitle').innerText = parentId ? "Ajouter un Sous-Spot" : "Ajouter un Spot";
       populateSpotTargetSelect();
+      populateSpotParentSelect('', parentId);
       if (defaultName) document.getElementById('spotName').value = defaultName;
       if (defaultDesc) document.getElementById('spotDesc').value = defaultDesc;
       openModal('spotModal');
+    }
+
+    function createSubSpot(parentId) {
+      const parentSpot = appState.spots.find(s => s.id === parentId);
+      if (!parentSpot) return;
+      openSpotModal('', '', parentId);
+      document.getElementById('spotLat').value = parentSpot.lat;
+      document.getElementById('spotLng').value = parentSpot.lng;
     }
 
     function editSpot(id) {
       const spot = appState.spots.find(s => s.id === id);
       if (!spot) return;
       populateSpotTargetSelect();
+      populateSpotParentSelect(spot.id, spot.parentId || '');
 
       document.getElementById('spotId').value = spot.id;
       document.getElementById('spotName').value = spot.name;
@@ -2147,10 +2242,21 @@
       getTransits().forEach(t => { select.innerHTML += `<option value="${t.id}">Transit: ${t.name}</option>`; });
     }
 
+    function populateSpotParentSelect(currentSpotId = '', selectedParentId = '') {
+      const select = document.getElementById('spotParentSelect');
+      select.innerHTML = '<option value="">-- Aucun (Spot Autonome / Macro) --</option>';
+      appState.spots.forEach(s => {
+        if (s.id !== currentSpotId && !s.parentId) {
+          select.innerHTML += `<option value="${s.id}" ${s.id === selectedParentId ? 'selected' : ''}>${s.name}</option>`;
+        }
+      });
+    }
+
     function saveSpot(e) {
       e.preventDefault();
       const id = document.getElementById('spotId').value || 's_' + Date.now();
       const name = document.getElementById('spotName').value;
+      const parentId = document.getElementById('spotParentSelect').value || '';
       const target = document.getElementById('spotTargetSelect').value;
       const lat = parseFloat(document.getElementById('spotLat').value);
       const lng = parseFloat(document.getElementById('spotLng').value);
@@ -2163,7 +2269,7 @@
       }
 
       const existingIndex = appState.spots.findIndex(s => s.id === id);
-      const spotData = { id, name, target, lat, lng, desc, url, imageBase64 };
+      const spotData = { id, name, parentId, target, lat, lng, desc, url, imageBase64 };
 
       if (existingIndex >= 0) appState.spots[existingIndex] = spotData;
       else appState.spots.push(spotData);
@@ -2182,6 +2288,7 @@
     function deleteSpot(id) {
       if (!confirm('Voulez-vous supprimer définitivement ce spot du voyage ?')) return;
       appState.spots = appState.spots.filter(s => s.id !== id);
+      appState.spots.forEach(s => { if (s.parentId === id) s.parentId = ''; });
       Object.keys(appState.dailyItineraries).forEach(day => {
         appState.dailyItineraries[day] = appState.dailyItineraries[day].filter(sId => sId !== id);
       });
@@ -2547,12 +2654,14 @@
           combinedDisplaySpots.forEach((s, idx) => {
             const segDist = dayRoute.segmentsDistances[idx] !== undefined ? dayRoute.segmentsDistances[idx] : 0;
             const isTransitSpot = dayRoute.transitSpots && dayRoute.transitSpots.includes(s);
+            const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
             html += `
               <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
                 <div class="font-bold text-slate-800 flex items-center justify-between">
                   <span class="flex items-center"><span class="w-4 h-4 rounded-full ${isTransitSpot ? 'bg-amber-600' : 'bg-emerald-600'} text-white text-[10px] flex items-center justify-center mr-1.5 font-mono">${isTransitSpot ? 'T' : idx + 1}</span>${s.name} ${isTransitSpot ? '(Transit)' : ''}</span>
                   <span class="text-[10px] text-emerald-600 font-mono">+${segDist.toFixed(1)} km</span>
                 </div>
+                ${parentSpot ? `<div class="text-[10px] text-indigo-600 font-medium">↳ Sous-spot de : ${parentSpot.name}</div>` : ''}
                 ${s.desc ? `<p class="text-slate-600">${s.desc}</p>` : ''}
                 ${s.url ? `<div><a href="${s.url}" target="_blank" class="text-indigo-600 hover:underline"><i class="fas fa-link mr-1"></i>${s.url}</a></div>` : ''}
                 ${s.imageBase64 ? `<div class="pt-1"><img src="${s.imageBase64}" class="w-full h-36 object-cover rounded border border-slate-300"></div>` : ''}
@@ -2591,9 +2700,11 @@
         if (appState.spots.length > 0) {
           html += `<div class="avoid-break space-y-3"><h3 class="text-lg font-bold text-slate-800 border-l-4 border-emerald-500 pl-2">Tous les Spots</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">`;
           appState.spots.forEach(s => {
+            const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
             html += `
               <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
                 <h4 class="font-bold text-slate-800"><i class="fas fa-location-dot text-emerald-600 mr-1.5"></i>${s.name}</h4>
+                ${parentSpot ? `<div class="text-[10px] text-indigo-600 font-medium">↳ Sous-spot de : ${parentSpot.name}</div>` : ''}
                 ${s.desc ? `<p class="text-slate-600">${s.desc}</p>` : ''}
                 ${s.url ? `<div><a href="${s.url}" target="_blank" class="text-indigo-600 hover:underline"><i class="fas fa-link mr-1"></i>${s.url}</a></div>` : ''}
                 ${s.imageBase64 ? `<div class="pt-1"><img src="${s.imageBase64}" class="w-full h-36 object-cover rounded border border-slate-300"></div>` : ''}
@@ -2677,7 +2788,7 @@
     async function exportZIP() {
       const zip = new JSZip();
       zip.file("voyage.json", JSON.stringify(appState, null, 2));
-      const manifest = { version: "2.40", exportedAt: new Date().toISOString(), totalSpots: appState.spots.length, totalZones: appState.zones.length };
+      const manifest = { version: "2.50", exportedAt: new Date().toISOString(), totalSpots: appState.spots.length, totalZones: appState.zones.length };
       zip.file("manifest.json", JSON.stringify(manifest, null, 2));
 
       const content = await zip.generateAsync({ type: "blob" });
@@ -2734,6 +2845,7 @@
       if (!appState.activeTab) appState.activeTab = 'structure';
       if (!appState.viewMode) appState.viewMode = 'designer';
       if (!appState.name) appState.name = "Mon Voyage";
+      if (appState.spots) appState.spots.forEach(s => { if (s.parentId === undefined) s.parentId = ''; });
 
       shouldFitBoundsOnce = true;
 
