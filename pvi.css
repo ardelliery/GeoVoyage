@@ -22,7 +22,119 @@
 --text-muted: #94a3b8;
 --header-bg: #020617;
 }
+/* ==========================================================================
+   PVI - GEOVOYAGE MAIN STYLESHEET
+   Centralisation des styles, thèmes (Sombre/Clair) & Composants
+   ========================================================================== */
 
+/* 1. VARIABLES GLOBALES & THÈMES */
+:root {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --border-color: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --map-filter: none;
+}
+
+html.dark {
+  --bg-main: #0f172a;
+  --bg-card: #020617;
+  --border-color: #1e293b;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --map-filter: brightness(0.8) invert(1) contrast(1.2) hue-rotate(200deg) saturating-subtle;
+}
+
+/* 2. CLASSES D'COMPOSANTS ET CARTE MÉTIER */
+
+/* Spots */
+.pvi-card-spot {
+  @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 
+         text-slate-800 dark:text-slate-100 p-3 rounded-xl shadow-sm 
+         transition-all duration-200 hover:border-emerald-500/50;
+}
+.pvi-badge-spot {
+  @apply bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 
+         border border-emerald-300 dark:border-emerald-800 text-xs px-2 py-0.5 rounded-full font-semibold;
+}
+
+/* Hébergements (Hôtels) */
+.pvi-card-hotel {
+  @apply bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 
+         text-slate-800 dark:text-slate-100 p-3 rounded-xl shadow-sm 
+         transition-all duration-200 hover:border-blue-500/50;
+}
+.pvi-badge-hotel {
+  @apply bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 
+         border border-blue-300 dark:border-blue-700 text-xs px-2 py-0.5 rounded-full font-semibold;
+}
+
+/* Transits & Déplacements */
+.pvi-card-transit {
+  @apply bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 
+         text-slate-800 dark:text-slate-100 p-3 rounded-xl shadow-sm 
+         transition-all duration-200 hover:border-amber-500/50;
+}
+.pvi-badge-transit {
+  @apply bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 
+         border border-amber-300 dark:border-amber-700 text-xs px-2 py-0.5 rounded-full font-semibold;
+}
+
+/* Bons Plans & Astuces */
+.pvi-card-bonplan {
+  @apply bg-amber-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-500/40 
+         text-slate-800 dark:text-slate-100 p-3 rounded-xl shadow-sm 
+         transition-all duration-200;
+}
+
+/* Modales & Panneaux */
+.pvi-modal-content {
+  @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 
+         rounded-2xl shadow-xl p-6 text-slate-800 dark:text-slate-100 transition-colors;
+}
+
+.pvi-input {
+  @apply w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 
+         bg-slate-50 dark:bg-slate-800 rounded-xl text-sm text-slate-900 dark:text-white 
+         focus:outline-none focus:border-indigo-500 transition-colors;
+}
+
+/* 3. ANIMATIONS & LEAFLET */
+@keyframes highlightPulse {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+  50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.9); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
+.highlight-card {
+  animation: highlightPulse 1.5s ease-in-out 2;
+  border-color: #6366f1 !important;
+}
+
+.custom-leaflet-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: white;
+  font-size: 13px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4);
+  border: 2px solid white;
+}
+
+/* 4. IMPRESSION & ROADBOOK PDF */
+@media print {
+  body * { visibility: hidden; }
+  #roadbookModal, #roadbookModal * { visibility: visible; }
+  #roadbookModal {
+    position: absolute; left: 0; top: 0; width: 100%; height: auto;
+    background: white !important; overflow: visible !important;
+  }
+  .print\:hidden { display: none !important; }
+  .page-break { page-break-after: always; break-after: page; }
+  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+}
 /* --- Styles Généraux basés sur le Thème --- */
 body {
 background-color: var(--bg-primary);
