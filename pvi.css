@@ -1,0 +1,112 @@
+/* --- Variables pour les thèmes Clair et Sombre --- */
+:root {
+--bg-primary: #f8fafc;
+--bg-secondary: #ffffff;
+--bg-card: #ffffff;
+--bg-input: #f1f5f9;
+--border-color: #e2e8f0;
+--text-primary: #0f172a;
+--text-secondary: #475569;
+--text-muted: #64748b;
+--header-bg: #ffffff;
+}
+
+.dark {
+--bg-primary: #0f172a;
+--bg-secondary: #020617;
+--bg-card: #020617;
+--bg-input: #0f172a;
+--border-color: #1e293b;
+--text-primary: #f8fafc;
+--text-secondary: #cbd5e1;
+--text-muted: #94a3b8;
+--header-bg: #020617;
+}
+
+/* --- Styles Généraux basés sur le Thème --- */
+body {
+background-color: var(--bg-primary);
+color: var(--text-primary);
+transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+header {
+background-color: var(--header-bg) !important;
+border-color: var(--border-color) !important;
+}
+
+/* Adaptation auto pour les éléments de carte et modales avec classe dynamic-theme */
+.theme-card {
+background-color: var(--bg-card);
+border-color: var(--border-color);
+color: var(--text-primary);
+}
+
+.theme-input {
+background-color: var(--bg-input);
+border-color: var(--border-color);
+color: var(--text-primary);
+}
+
+/* --- Leaflet Dark Mode Tiles (Inversion CSS douce pour la carte en mode sombre) --- */
+.dark .leaflet-tile-pane {
+filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+.dark .leaflet-container {
+background: #0f172a !important;
+}
+
+/* --- Animations & Marqueurs Personnalisés --- */
+@keyframes highlightPulse {
+0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.9); }
+100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
+.highlight-card {
+animation: highlightPulse 1.5s ease-in-out 2;
+border-color: #6366f1 !important;
+}
+
+.custom-leaflet-marker {
+display: flex;
+align-items: center;
+justify-content: center;
+border-radius: 50%;
+color: white;
+font-size: 13px;
+box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4);
+border: 2px solid white;
+}
+
+/* --- Styles Spécifiques à l'Impression / PDF --- */
+@media print {
+body * {
+visibility: hidden;
+}
+#roadbookModal, #roadbookModal * {
+visibility: visible;
+}
+#roadbookModal {
+position: absolute;
+left: 0;
+top: 0;
+width: 100%;
+height: auto;
+background: white !important;
+color: #0f172a !important;
+overflow: visible !important;
+}
+.print:hidden {
+display: none !important;
+}
+.page-break {
+page-break-after: always;
+break-after: page;
+}
+.avoid-break {
+break-inside: avoid;
+page-break-inside: avoid;
+}
+}
