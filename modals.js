@@ -2,6 +2,15 @@
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
+function toggleNightTransitFields() {
+  const isChecked = document.getElementById('transitIsNightTransit').checked;
+  const container = document.getElementById('transitNightCountContainer');
+  if (container) {
+    if (isChecked) container.classList.remove('hidden');
+    else container.classList.add('hidden');
+  }
+}
+
 function editTransitModal(transitId) {
   const transits = getTransits();
   const t = transits.find(x => x.id === transitId);
@@ -10,6 +19,12 @@ function editTransitModal(transitId) {
   document.getElementById('transitName').value = t.name;
   document.getElementById('transitMode').value = t.mode || 'Voiture';
   document.getElementById('transitDesc').value = t.desc || '';
+  
+  const isNight = !!t.isNightTransit;
+  document.getElementById('transitIsNightTransit').checked = isNight;
+  document.getElementById('transitNightCount').value = t.nightCount || 1;
+  toggleNightTransitFields();
+
   openModal('transitModal');
 }
 
@@ -19,6 +34,8 @@ function saveTransit(e) {
   const name = document.getElementById('transitName').value;
   const mode = document.getElementById('transitMode').value;
   const desc = document.getElementById('transitDesc').value;
+  const isNightTransit = document.getElementById('transitIsNightTransit').checked;
+  const nightCount = parseInt(document.getElementById('transitNightCount').value) || 1;
 
   if (!appState.customTransits) appState.customTransits = [];
   let custom = appState.customTransits.find(x => x.id === id);
@@ -26,8 +43,10 @@ function saveTransit(e) {
     custom.name = name;
     custom.mode = mode;
     custom.desc = desc;
+    custom.isNightTransit = isNightTransit;
+    custom.nightCount = nightCount;
   } else {
-    appState.customTransits.push({ id, name, mode, desc });
+    appState.customTransits.push({ id, name, mode, desc, isNightTransit, nightCount });
   }
 
   closeModal('transitModal');

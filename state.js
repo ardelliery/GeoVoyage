@@ -185,17 +185,34 @@ function deltaToShortDateStr(deltaDays) {
 
 function getZoneComputedDates() {
   let currentDay = 0;
+  
+  const depTransitId = 'transit_dep_first';
+  const customDepT = (appState.customTransits || []).find(ct => ct.id === depTransitId);
+  if (customDepT && customDepT.isNightTransit) {
+    currentDay += (parseInt(customDepT.nightCount) || 1);
+  }
+
   let mapping = {};
-  appState.zones.forEach(zone => {
+  appState.zones.forEach((zone, index) => {
     const hotel = appState.hotels.find(h => h.zoneId === zone.id);
     const nights = hotel ? (parseInt(hotel.nights) || 1) : 1;
     const checkinDay = currentDay;
     const checkoutDay = currentDay + nights;
     mapping[zone.id] = { checkinDay, checkoutDay, nights };
+    
     currentDay = checkoutDay;
+    if (index < appState.zones.length - 1) {
+      const nextZone = appState.zones[index + 1];
+      const transitId = `transit_${zone.id}_${nextZone.id}`;
+      const customT = (appState.customTransits || []).find(ct => ct.id === transitId);
+      if (customT && customT.isNightTransit) {
+        currentDay += (parseInt(customT.nightCount) || 1);
+      }
+    }
   });
   return mapping;
 }
+
 
 function getTotalDays() {
   const computed = getZoneComputedDates();
@@ -212,29 +229,36 @@ function getTransits() {
   if (appState.zones.length === 0) return transits;
 
   const firstZone = appState.zones[0];
-  transits.push({ id: 'transit_dep_first', name: `Transit Départ ➔ ${firstZone.name}`, day: 0, mode: 'Voiture', fromType: 'dep', toType: 'zone', toZone: firstZone });
+  const depTransitId = 'transit_dep_first';
+  let depTransitObj = { id: depTransitId, name: `Transit Départ ➔ ${firstZone.name}`, day: 0, mode: 'Voiture', fromType: 'dep', toType: 'zone', toZone: firstZone, isNightTransit: false, nightCount: 1, desc: '' };
+  const customDep = (appState.customTransits || []).find(ct => ct.id === depTransitId);
+  if (customDep) { depTransitObj = { ...depTransitObj, ...customDep }; }
+  transits.push(depTransitObj);
 
   for (let i = 0; i < appState.zones.length - 1; i++) {
     const from = appState.zones[i];
     const to = appState.zones[i+1];
     const compFrom = computed[from.id];
-    transits.push({ id: `transit_${from.id}_${to.id}`, name: `Transit : ${from.name} ➔ ${to.name}`, day: compFrom ? compFrom.checkoutDay : 0, mode: 'Voiture', from, to });
+    const transitId = `transit_${from.id}_${to.id}`;
+    let transitObj = { id: transitId, name: `Transit : ${from.name} ➔ ${to.name}`, day: compFrom ? compFrom.checkoutDay : 0, mode: 'Voiture', from, to, isNightTransit: false, nightCount: 1, desc: '' };
+    const customT = (appState.customTransits || []).find(ct => ct.id === transitId);
+    if (customT) { transitObj = { ...transitObj, ...customT }; }
+    transits.push(transitObj);
   }
 
   (appState.customTransits || []).forEach(ct => {
-    const existing = transits.find(t => t.id === ct.id);
-    if (existing) {
-      existing.mode = ct.mode || existing.mode;
-      existing.desc = ct.desc || existing.desc;
-      existing.name = ct.name || existing.name;
-    } else {
+    if (!transits.some(t => t.id === ct.id)) {
       transits.push(ct);
     }
   });
 
   const lastZone = appState.zones[appState.zones.length - 1];
   const compLast = computed[lastZone.id];
-  transits.push({ id: 'transit_last_arr', name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: compLast ? compLast.checkoutDay : 0, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr' });
+  const arrTransitId = 'transit_last_arr';
+  let arrTransitObj = { id: arrTransitId, name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: compLast ? compLast.checkoutDay : 0, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr', isNightTransit: false, nightCount: 1, desc: '' };
+  const customArr = (appState.customTransits || []).find(ct => ct.id === arrTransitId);
+  if (customArr) { arrTransitObj = { ...arrTransitObj, ...customArr }; }
+  transits.push(arrTransitObj);
 
   return transits;
 }

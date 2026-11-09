@@ -314,9 +314,29 @@ function renderTravelerUI() {
   });
   const activeHotel = dayRoute.activeHotel;
 
+  // Récupération du transit éventuel de la journée
+  const transits = getTransits().filter(t => t.day === curDay);
+  const activeTransit = transits.length > 0 ? transits[0] : null;
+
   const banner = document.getElementById('travelerContextBanner');
   if (banner) {
-    if (currentZone) {
+    if (activeTransit && activeTransit.isNightTransit) {
+      const modeIcon = getTransitModeIcon(activeTransit.mode);
+      banner.className = 'p-4 rounded-2xl border text-sm bg-amber-500/10 dark:bg-amber-950/40 border-amber-400 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 shadow-md space-y-2';
+      banner.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span class="font-bold flex items-center gap-1.5">
+            <span class="text-base">${modeIcon}</span> 🛌 Transport de nuit (${activeTransit.nightCount || 1} nuit(s) à bord)
+          </span>
+          <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">${activeTransit.name}</span>
+        </div>
+        ${activeTransit.desc ? `
+          <div class="pt-2 border-t border-amber-300 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-200">
+            <i class="fa-solid fa-clipboard-list mr-1.5"></i><strong>Réservation & Infos :</strong>
+            <p class="mt-1 whitespace-pre-line font-mono bg-white/50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/40 text-slate-800 dark:text-slate-200">${activeTransit.desc}</p>
+          </div>` : ''}
+      `;
+    } else if (currentZone) {
       banner.className = 'p-4 rounded-2xl border text-sm bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-200 shadow-md space-y-2';
       banner.innerHTML = `
         <div class="flex items-center justify-between">
@@ -348,9 +368,25 @@ function renderTravelerUI() {
   const daySpotIds = appState.dailyItineraries[curDay] || [];
   const dayBpIds = appState.dailyBonsPlans[curDay] || [];
 
-  if (daySpotIds.length === 0 && dayBpIds.length === 0 && !activeHotel) {
+  if (daySpotIds.length === 0 && dayBpIds.length === 0 && !activeHotel && !activeTransit) {
     routeContainer.innerHTML = '<p class="text-sm text-slate-500 italic py-4 text-center">Aucune étape enregistrée pour cette journée.</p>';
   } else {
+    // Si la journée comporte un transit de nuit, on insère la carte récapitulative de transit dans le fil d'étape
+    if (activeTransit) {
+      const transitEl = document.createElement('div');
+      transitEl.className = 'bg-amber-500/10 dark:bg-amber-950/30 border border-amber-400/60 dark:border-amber-800/50 rounded-2xl p-4 space-y-2 shadow-sm';
+      transitEl.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span class="text-amber-900 dark:text-amber-200 font-bold text-sm truncate">
+            ${getTransitModeIcon(activeTransit.mode)} ${activeTransit.name}
+          </span>
+          ${activeTransit.isNightTransit ? '<span class="text-xs bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full font-bold">🛌 Nuit à bord</span>' : ''}
+        </div>
+        ${activeTransit.desc ? `<p class="text-xs text-amber-800 dark:text-amber-100 whitespace-pre-line font-mono bg-white/40 dark:bg-slate-900/40 p-2 rounded-xl border border-amber-200/50 dark:border-amber-800/30">${activeTransit.desc}</p>` : ''}
+      `;
+      routeContainer.appendChild(transitEl);
+    }
+
     if (activeHotel) {
       const hotelEl = document.createElement('div');
       hotelEl.className = 'bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-4 space-y-2 shadow-sm';
