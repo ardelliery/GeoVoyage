@@ -1,4 +1,4 @@
-const CACHE_NAME = 'geovoyage-v8';
+const CACHE_NAME = 'geovoyage-v8.1';
 const TILE_CACHE_NAME = 'geovoyage-tiles-v1';
 
 // Liste des ressources statiques essentielles de l'application
