@@ -1,6 +1,6 @@
 /* ==========================================================================
    GeoVoyage - UI Rendering & Interactions (ui.js)
-   Version complète avec affichage des durées OSRM au format Heures & Minutes
+   Version complète avec affichage des durées OSRM au format Heures & Minutes (Segments et Transits inclus)
    ========================================================================== */
 
 // ==========================================
@@ -23,7 +23,6 @@ function formatDuration(minutes) {
   } else if (mins === 0) {
     return `${hrs}h`;
   } else {
-    // Formatage avec zéro initial si mins < 10 pour un rendu propre (ex: 1h 05 min)
     const minsStr = mins < 10 ? `0${mins}` : `${mins}`;
     return `${hrs}h ${minsStr} min`;
   }
@@ -436,6 +435,17 @@ function renderTravelerUI() {
       const segDist = dayRoute.segmentsDistances[idx] !== undefined ? dayRoute.segmentsDistances[idx] : 0;
       const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
+      const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
+      let segmentDisplay = `+${segDist.toFixed(1)} km`;
+      if (dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
+        const ratio = segDist / dayRoute.totalDist;
+        const segmentMin = dayRouteInfo.durationMin * ratio;
+        const durFormatted = formatDuration(segmentMin);
+        segmentDisplay = `🚗 +${segDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
+      } else {
+        segmentDisplay = `+${segDist.toFixed(1)} km`;
+      }
+
       const el = document.createElement('div');
       el.className = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-sm';
       el.innerHTML = `
@@ -447,7 +457,7 @@ function renderTravelerUI() {
               ${parentSpot ? `<span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium block">↳ Sous-spot de : ${parentSpot.name}</span>` : ''}
             </div>
           </div>
-          <span class="text-xs text-emerald-600 dark:text-emerald-400 font-mono shrink-0">+${segDist.toFixed(1)} km</span>
+          <span class="text-xs text-emerald-600 dark:text-emerald-400 font-mono shrink-0">${segmentDisplay}</span>
         </div>
         ${spot.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300">${spot.desc}</p>` : ''}
         ${spot.imageBase64 ? `<div><img src="${spot.imageBase64}" class="w-full h-40 object-cover rounded-xl border border-slate-200 dark:border-slate-700"></div>` : ''}
@@ -480,7 +490,6 @@ function renderTravelerUI() {
     });
   }
 
-  // Utilisation prioritaire du cache OSRM si présent pour le total du jour
   const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
   const distEl = document.getElementById('travelerDayDistance');
   if (distEl) {
@@ -893,6 +902,17 @@ function renderPlanningUI() {
         const transitSegDist = dayRoute.segmentsDistances[tIdx] !== undefined ? dayRoute.segmentsDistances[tIdx] : 0;
         const parentSpot = ts.parentId ? appState.spots.find(p => p.id === ts.parentId) : null;
         
+        const transitRouteInfo = activeTransitId ? getEffectiveDistanceAndDuration(activeTransitId, dayRoute.totalDist) : { isOsrm: false, durationMin: null };
+        let transitSegDisplay = `+${transitSegDist.toFixed(1)} km`;
+        if (transitRouteInfo.isOsrm && transitRouteInfo.durationMin && dayRoute.totalDist > 0) {
+          const ratio = transitSegDist / dayRoute.totalDist;
+          const segmentMin = transitRouteInfo.durationMin * ratio;
+          const durFormatted = formatDuration(segmentMin);
+          transitSegDisplay = `🚗 +${transitSegDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
+        } else {
+          transitSegDisplay = `+${transitSegDist.toFixed(1)} km`;
+        }
+
         const tItem = document.createElement('div');
         tItem.id = `card-spot-${ts.id}`;
         tItem.className = 'bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/50 rounded-xl p-3 space-y-1 text-xs sm:text-sm';
@@ -916,7 +936,7 @@ function renderPlanningUI() {
           </div>
           ${ts.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300 pl-8">${ts.desc}</p>` : ''}
           ${ts.imageBase64 ? `<div class="pl-8 pt-1.5"><img src="${ts.imageBase64}" class="w-28 h-20 object-cover rounded-xl border border-slate-300 dark:border-slate-700"></div>` : ''}
-          <div class="text-xs text-emerald-600 dark:text-emerald-400 font-mono pl-8">➔ Distance : +${transitSegDist.toFixed(1)} km</div>
+          <div class="text-xs text-emerald-600 dark:text-emerald-400 font-mono pl-8">➔ Distance : ${transitSegDisplay}</div>
         `;
         routeContainer.appendChild(tItem);
       });
@@ -929,6 +949,17 @@ function renderPlanningUI() {
       const offsetIndex = (dayRoute.transitSpots ? dayRoute.transitSpots.length : 0) + idx;
       const segDist = dayRoute.segmentsDistances[offsetIndex] !== undefined ? dayRoute.segmentsDistances[offsetIndex] : 0;
       const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
+
+      const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
+      let segmentDisplay = `+${segDist.toFixed(1)} km`;
+      if (dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
+        const ratio = segDist / dayRoute.totalDist;
+        const segmentMin = dayRouteInfo.durationMin * ratio;
+        const durFormatted = formatDuration(segmentMin);
+        segmentDisplay = `🚗 +${segDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
+      } else {
+        segmentDisplay = `+${segDist.toFixed(1)} km`;
+      }
 
       const item = document.createElement('div');
       item.id = `card-spot-${spot.id}`;
@@ -953,7 +984,7 @@ function renderPlanningUI() {
         </div>
         ${spot.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300 pl-8">${spot.desc}</p>` : ''}
         ${spot.url ? `<div class="pl-8 pt-0.5"><a href="${spot.url}" target="_blank" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center"><i class="fa-solid fa-link mr-1"></i><span class="truncate">${spot.url}</span></a></div>` : ''}
-        <div class="text-xs text-emerald-600 dark:text-emerald-400 font-mono pl-8 pt-0.5">➔ Distance : +${segDist.toFixed(1)} km</div>
+        <div class="text-xs text-emerald-600 dark:text-emerald-400 font-mono pl-8 pt-0.5">➔ Distance : ${segmentDisplay}</div>
         ${spot.imageBase64 ? `<div class="pl-8 pt-1.5"><img src="${spot.imageBase64}" class="w-28 h-20 object-cover rounded-xl border border-slate-200 dark:border-slate-700"></div>` : ''}
       `;
       routeContainer.appendChild(item);
@@ -1008,7 +1039,6 @@ function renderPlanningUI() {
     });
   }
 
-  // Utilisation prioritaire du cache OSRM si présent avec formatage Heures/Minutes
   const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
   const dayDistEl = document.getElementById('dayRouteDistance');
   if (dayDistEl) {
@@ -1249,13 +1279,11 @@ function renderAllSpotsUI() {
 function checkCoherence() {
   const alerts = [];
   
-  // 1. Vérification des zones sans hébergement
   appState.zones.forEach(zone => {
     const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
     if (zoneHotels.length === 0) {
       alerts.push({ type: 'danger', text: `⚠️ La zone "${zone.name}" n'a aucun hébergement rattaché.` });
     } else {
-      // 2. Vérification des distances des spots du secteur par rapport à l'hôtel
       const computed = getZoneComputedDates();
       const comp = computed[zone.id];
       if (comp) {
@@ -1278,7 +1306,6 @@ function checkCoherence() {
     }
   });
 
-  // 3. Vérification des jours sans spot rattaché (Niveau Information)
   const totalDays = getTotalDays();
   const transits = getTransits();
   for (let d = 0; d < totalDays; d++) {
@@ -1358,7 +1385,6 @@ async function enrichTripWithOsrmRoutes() {
   if (typeof initRouteCache === 'function') initRouteCache();
   const totalDays = getTotalDays();
   
-  // 1. Enrichissement des transits
   const transits = getTransits();
   for (const t of transits) {
     const tCalc = calculateTransitDistances(t);
@@ -1375,7 +1401,6 @@ async function enrichTripWithOsrmRoutes() {
     }
   }
 
-  // 2. Enrichissement des journées
   for (let d = 0; d < totalDays; d++) {
     const dayRoute = calculateDayRoute(d);
     let points = [];
@@ -1393,7 +1418,6 @@ async function enrichTripWithOsrmRoutes() {
   }
 }
 
-// Helper pour lire le cache OSRM avec fallback synchrone sur Haversine
 function getEffectiveDistanceAndDuration(cacheKey, fallbackDistanceKm) {
   if (appState.routeCache && appState.routeCache[cacheKey]) {
     const routes = appState.routeCache[cacheKey];
@@ -1537,11 +1561,20 @@ async function generateRoadbookContent() {
         const segDist = dayRoute.segmentsDistances[idx] !== undefined ? dayRoute.segmentsDistances[idx] : 0;
         const isTransitSpot = dayRoute.transitSpots && dayRoute.transitSpots.includes(s);
         const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
+
+        let segDisplay = `+${segDist.toFixed(1)} km`;
+        if (dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
+          const ratio = segDist / dayRoute.totalDist;
+          const segmentMin = dayRouteInfo.durationMin * ratio;
+          const durFormatted = formatDuration(segmentMin);
+          segDisplay = `+${segDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
+        }
+
         html += `
           <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
             <div class="font-bold text-slate-800 flex items-center justify-between">
               <span class="flex items-center"><span class="w-4 h-4 rounded-full ${isTransitSpot ? 'bg-amber-600' : 'bg-emerald-600'} text-white text-[10px] flex items-center justify-center mr-1.5 font-mono">${isTransitSpot ? 'T' : idx + 1}</span>${s.name} ${isTransitSpot ? '(Transit)' : ''}</span>
-              <span class="text-[10px] text-emerald-600 font-mono">+${segDist.toFixed(1)} km</span>
+              <span class="text-[10px] text-emerald-600 font-mono">${segDisplay}</span>
             </div>
             ${parentSpot ? `<div class="text-[10px] text-indigo-600 font-medium">↳ Sous-spot de : ${parentSpot.name}</div>` : ''}
             ${s.desc ? `<p class="text-slate-600">${s.desc}</p>` : ''}
