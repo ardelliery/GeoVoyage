@@ -390,3 +390,80 @@ function cleanOrphanTransitsAndTargets() {
   appState.spots.forEach(s => { if (s.target && !validTransits.includes(s.target)) s.target = ''; });
   appState.bonsPlans.forEach(bp => { if (bp.target && !validTransits.includes(bp.target)) bp.target = ''; });
 }
+
+// --- Module OSRM (Calcul d'itinéraire réel par la route) ---
+
+function getOsrmProfile(mode) {
+  if (mode === 'Vélo') return 'bicycle';
+  // Par défaut, voiture pour Voiture, Autocar, Transports en commun routiers
+  return 'car';
+}
+
+async function fetchOsrmRoute(points, mode = 'Voiture') {
+  if (!points || points.length < 2) return null;
+  
+  // Seuls les modes routiers supportent OSRM standard
+  if (mode === 'Avion' || mode === 'Bateau' || mode === 'À pied') {
+    return null;
+  }
+
+  const profile = getOsrmProfile(mode);
+  // Format des coordonnées OSRM : lon1,lat1;lon2,lat2;...
+  const coordsStr = points.map(p => `${p.lng},${p.lat}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coordsStr}?overview=false&alternatives=true`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000); // Timeout 4s non bloquant
+    
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) throw new Error('Erreur réseau OSRM');
+    const data = await res.json();
+
+    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      // Retourne les routes trouvées (la plus rapide et les alternatives)
+      return data.routes.map(r => ({
+        distanceKm: r.distance / 1000,
+        durationMin: r.duration / 60
+      }));
+    }
+  } catch (err) {
+    // Mode offline ou timeout : on échoue silencieusement pour retomber sur Haversine
+    console.log("OSRM non disponible (offline/timeout), repli sur Haversine.");
+  }
+  return null;
+}
+
+// Initialisation du cache de route global dans l'état si absent
+function initRouteCache() {
+  if (!appState.routeCache) appState.routeCache = {};
+}
+
+function invalidateRouteCache() {
+  appState.routeCache = {};
+}
+
+// Récupère la distance et durée (OSRM en priorité, sinon Haversine)
+function getEffectiveDistanceAndDuration(cacheKey, fallbackDistanceKm) {
+  if (appState.routeCache && appState.routeCache[cacheKey]) {
+    const routes = appState.routeCache[cacheKey];
+    // On prend la première route (la plus rapide)
+    if (routes && routes.length > 0) {
+      return {
+        distanceKm: routes[0].distanceKm,
+        durationMin: routes[0].durationMin,
+        isOsrm: true,
+        alternatives: routes.slice(1) // Pour les alternatives (Route 2)
+      };
+    }
+  }
+  // Repli par défaut sur Haversine
+  return {
+    distanceKm: fallbackDistanceKm,
+    durationMin: null,
+    isOsrm: false,
+    alternatives: []
+  };
+}

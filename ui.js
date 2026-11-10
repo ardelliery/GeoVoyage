@@ -1,7 +1,33 @@
 /* ==========================================================================
    GeoVoyage - UI Rendering & Interactions (ui.js)
-   Version complète avec gestion du thème (Clair/Sombre) et rendu global
+   Version complète avec affichage des durées OSRM au format Heures & Minutes
    ========================================================================== */
+
+// ==========================================
+// 0. FONCTIONS UTILITAIRES DE FORMATAGE
+// ==========================================
+
+/**
+ * Formate une durée en minutes au format lisible "Xh Ymin" ou "Ymin"
+ * @param {number} minutes 
+ * @returns {string}
+ */
+function formatDuration(minutes) {
+  if (!minutes || minutes <= 0) return '';
+  const totalMin = Math.round(minutes);
+  const hrs = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+
+  if (hrs === 0) {
+    return `${mins} min`;
+  } else if (mins === 0) {
+    return `${hrs}h`;
+  } else {
+    // Formatage avec zéro initial si mins < 10 pour un rendu propre (ex: 1h 05 min)
+    const minsStr = mins < 10 ? `0${mins}` : `${mins}`;
+    return `${hrs}h ${minsStr} min`;
+  }
+}
 
 // ==========================================
 // 1. GESTION DU THÈME (SOMBRE / CLAIR)
@@ -34,11 +60,13 @@ window.onload = async function() {
   loadFromLocalStorage();
   
   const tripNameInput = document.getElementById('tripNameInput');
-  tripNameInput.value = appState.name;
-  tripNameInput.addEventListener('input', (e) => {
-    appState.name = e.target.value || 'Mon Voyage';
-    saveToLocalStorage();
-  });
+  if (tripNameInput) {
+    tripNameInput.value = appState.name;
+    tripNameInput.addEventListener('input', (e) => {
+      appState.name = e.target.value || 'Mon Voyage';
+      saveToLocalStorage();
+    });
+  }
 
   const pivotInput = document.getElementById('pivotDateInput');
   if (pivotInput) {
@@ -76,8 +104,8 @@ window.onload = async function() {
   const triggerPrintBtn = document.getElementById('triggerPrintBtn');
 
   if (openPrintRoadbookBtn) {
-    openPrintRoadbookBtn.addEventListener('click', () => {
-      generateRoadbookContent();
+    openPrintRoadbookBtn.addEventListener('click', async () => {
+      await generateRoadbookContent();
       document.getElementById('roadbookModal').classList.remove('hidden');
     });
   }
@@ -314,7 +342,6 @@ function renderTravelerUI() {
   });
   const activeHotel = dayRoute.activeHotel;
 
-  // Récupération du transit éventuel de la journée
   const transits = getTransits().filter(t => t.day === curDay);
   const activeTransit = transits.length > 0 ? transits[0] : null;
 
@@ -371,7 +398,6 @@ function renderTravelerUI() {
   if (daySpotIds.length === 0 && dayBpIds.length === 0 && !activeHotel && !activeTransit) {
     routeContainer.innerHTML = '<p class="text-sm text-slate-500 italic py-4 text-center">Aucune étape enregistrée pour cette journée.</p>';
   } else {
-    // Si la journée comporte un transit de nuit, on insère la carte récapitulative de transit dans le fil d'étape
     if (activeTransit) {
       const transitEl = document.createElement('div');
       transitEl.className = 'bg-amber-500/10 dark:bg-amber-950/30 border border-amber-400/60 dark:border-amber-800/50 rounded-2xl p-4 space-y-2 shadow-sm';
@@ -453,8 +479,16 @@ function renderTravelerUI() {
       routeContainer.appendChild(el);
     });
   }
+
+  // Utilisation prioritaire du cache OSRM si présent pour le total du jour
+  const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
   const distEl = document.getElementById('travelerDayDistance');
-  if (distEl) distEl.innerText = dayRoute.totalDist.toFixed(1) + ' km';
+  if (distEl) {
+    const durStr = dayRouteInfo.durationMin ? ` (~${formatDuration(dayRouteInfo.durationMin)})` : '';
+    distEl.innerText = dayRouteInfo.isOsrm 
+      ? `🚗 ${dayRouteInfo.distanceKm.toFixed(1)} km${durStr}`
+      : `${dayRouteInfo.distanceKm.toFixed(1)} km`;
+  }
 }
 
 function changeTravelerDay(delta) {
@@ -472,6 +506,8 @@ function renderStructureUI() {
 
   const depTransit = getTransits().find(t => t.id === 'transit_dep_first');
   const depTransitCalc = depTransit ? calculateTransitDistances(depTransit) : null;
+  const depRouteInfo = depTransitCalc ? getEffectiveDistanceAndDuration(depTransit.id, depTransitCalc.totalDist) : null;
+
   const depTransitSpots = appState.spots.filter(s => s.target === 'transit_dep_first');
   const depTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_dep_first');
 
@@ -516,7 +552,11 @@ function renderStructureUI() {
       <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
         <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
           <span>${getTransitModeIcon(depTransit.mode)} ${depTransit.name} (${depTransit.mode || 'Voiture'})</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-mono">${depTransitCalc ? depTransitCalc.totalDist.toFixed(1) : 0} km</span>
+          <span class="text-emerald-600 dark:text-emerald-400 font-mono">
+            ${depRouteInfo && depRouteInfo.isOsrm 
+              ? `🚗 ${depRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(depRouteInfo.durationMin)})` 
+              : `${depTransitCalc ? depTransitCalc.totalDist.toFixed(1) : 0} km`}
+          </span>
         </div>
         ${depTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${depTransitSpotsHtml}</div>` : ''}
         ${depTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${depTransitBpsHtml}</div>` : ''}
@@ -618,7 +658,7 @@ function renderStructureUI() {
           <div id="card-hotel-${h.id}" class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
             <div class="truncate cursor-pointer hover:opacity-80" onclick="centerMapOnCoords(${h.lat}, ${h.lng})">
               <span class="text-slate-900 dark:text-white font-semibold flex items-center"><i class="fa-solid fa-hotel text-blue-500 dark:text-blue-400 mr-1.5"></i>${h.name}</span>
-              <span class="text-slate-500 dark:text-slate-400 block truncate">${h.nights || 0} nuit(s) • Rayon : ${h.radiusKm || 15} km</span>
+              <span class="text-slate-500 dark:text-slate-400 block truncate">${h.nights || 0} nuit(s) • Rayon : ${h.radiusKm || 50} km</span>
               ${h.desc ? `<span class="text-slate-600 dark:text-slate-300 block italic truncate mt-0.5 text-[11px]">${h.desc}</span>` : ''}
             </div>
             <div class="flex items-center space-x-1 shrink-0 ml-2">
@@ -636,6 +676,7 @@ function renderStructureUI() {
     const nextTransitId = index < appState.zones.length - 1 ? `transit_${zone.id}_${appState.zones[index+1].id}` : null;
     const nextTransit = nextTransitId ? getTransits().find(t => t.id === nextTransitId) : null;
     const nextTransitCalc = nextTransit ? calculateTransitDistances(nextTransit) : null;
+    const nextRouteInfo = (nextTransit && nextTransitCalc) ? getEffectiveDistanceAndDuration(nextTransit.id, nextTransitCalc.totalDist) : null;
     const nextTransitSpots = nextTransit ? appState.spots.filter(s => s.target === nextTransit.id) : [];
 
     if (nextTransit) {
@@ -643,7 +684,11 @@ function renderStructureUI() {
         <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
           <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
             <span>${getTransitModeIcon(nextTransit.mode)} ${nextTransit.name} (${nextTransit.mode || 'Voiture'})</span>
-            <span class="text-emerald-600 dark:text-emerald-400 font-mono">${nextTransitCalc ? nextTransitCalc.totalDist.toFixed(1) : 0} km</span>
+            <span class="text-emerald-600 dark:text-emerald-400 font-mono">
+              ${nextRouteInfo && nextRouteInfo.isOsrm 
+                ? `🚗 ${nextRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(nextRouteInfo.durationMin)})` 
+                : `${nextTransitCalc ? nextTransitCalc.totalDist.toFixed(1) : 0} km`}
+            </span>
           </div>
           ${nextTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots en transit :</span>${nextTransitSpots.map((s, sIdx) => `<div class="flex items-center justify-between py-0.5 px-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800"><span class="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${sIdx + 1}) ${s.name}</span><div class="flex space-x-1"><button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="text-emerald-600 dark:text-emerald-400 p-1" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button><button onclick="editSpot('${s.id}')" class="text-indigo-600 dark:text-indigo-400 p-1"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`).join('')}</div>` : ''}
           <div class="text-right pt-1">
@@ -659,6 +704,7 @@ function renderStructureUI() {
 
   const arrTransit = getTransits().find(t => t.id === 'transit_last_arr');
   const arrTransitCalc = arrTransit ? calculateTransitDistances(arrTransit) : null;
+  const arrRouteInfo = (arrTransit && arrTransitCalc) ? getEffectiveDistanceAndDuration(arrTransit.id, arrTransitCalc.totalDist) : null;
   const arrTransitSpots = appState.spots.filter(s => s.target === 'transit_last_arr');
   const arrTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_last_arr');
 
@@ -703,7 +749,11 @@ function renderStructureUI() {
       <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
         <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
           <span>${getTransitModeIcon(arrTransit.mode)} ${arrTransit.name} (${arrTransit.mode || 'Voiture'})</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-mono">${arrTransitCalc ? arrTransitCalc.totalDist.toFixed(1) : 0} km</span>
+          <span class="text-emerald-600 dark:text-emerald-400 font-mono">
+            ${arrRouteInfo && arrRouteInfo.isOsrm 
+              ? `🚗 ${arrRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(arrRouteInfo.durationMin)})` 
+              : `${arrTransitCalc ? arrTransitCalc.totalDist.toFixed(1) : 0} km`}
+          </span>
         </div>
         ${arrTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${arrTransitSpotsHtml}</div>` : ''}
         ${arrTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${arrTransitBpsHtml}</div>` : ''}
@@ -756,9 +806,11 @@ function renderPlanningUI() {
     if (dayRoute.transits && dayRoute.transits.length > 0) {
       const t = dayRoute.transits[0];
       const tCalc = calculateTransitDistances(t);
+      const tRouteInfo = getEffectiveDistanceAndDuration(t.id, tCalc.totalDist);
       const modeIcon = getTransitModeIcon(t.mode);
+      const durStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/45 border-amber-300 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 flex justify-between items-center flex-wrap gap-2';
-      banner.innerHTML = `<div><span class="mr-2 text-base">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em> • Distance transit : <span class="text-emerald-600 dark:text-emerald-400 font-mono font-bold">${tCalc.totalDist.toFixed(1)} km</span>.</div><button onclick="editTransitModal('${t.id}')" class="bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-950 dark:text-white px-2.5 py-1 rounded-lg text-xs font-semibold"><i class="fa-solid fa-gear mr-1"></i>Configurer</button>`;
+      banner.innerHTML = `<div><span class="mr-2 text-base">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em> • Distance transit : <span class="text-emerald-600 dark:text-emerald-400 font-mono font-bold">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${durStr}` : `${tCalc.totalDist.toFixed(1)} km`}</span>.</div><button onclick="editTransitModal('${t.id}')" class="bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-950 dark:text-white px-2.5 py-1 rounded-lg text-xs font-semibold"><i class="fa-solid fa-gear mr-1"></i>Configurer</button>`;
     } else if (currentZone) {
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-200 flex justify-between items-center flex-wrap gap-2';
       banner.innerHTML = `<div><i class="fa-solid fa-map-pin text-indigo-600 dark:text-indigo-400 mr-2"></i>Secteur actif : <strong>${currentZone.name}</strong></div>${activeHotel ? `<span class="text-xs bg-indigo-100 dark:bg-indigo-900 px-2.5 py-1 rounded-lg text-indigo-700 dark:text-indigo-300 cursor-pointer hover:underline" onclick="centerMapOnCoords(${activeHotel.lat}, ${activeHotel.lng})"><i class="fa-solid fa-hotel mr-1"></i>${activeHotel.name}</span>` : ''}`;
@@ -956,8 +1008,15 @@ function renderPlanningUI() {
     });
   }
 
+  // Utilisation prioritaire du cache OSRM si présent avec formatage Heures/Minutes
+  const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
   const dayDistEl = document.getElementById('dayRouteDistance');
-  if (dayDistEl) dayDistEl.innerText = dayRoute.totalDist.toFixed(1) + ' km';
+  if (dayDistEl) {
+    const durStr = dayRouteInfo.durationMin ? ` (~${formatDuration(dayRouteInfo.durationMin)})` : '';
+    dayDistEl.innerText = dayRouteInfo.isOsrm 
+      ? `🚗 ${dayRouteInfo.distanceKm.toFixed(1)} km${durStr}`
+      : `${dayRouteInfo.distanceKm.toFixed(1)} km`;
+  }
 }
 
 function changeDay(delta) {
@@ -1226,7 +1285,6 @@ function checkCoherence() {
     const daySpots = appState.dailyItineraries[d] || [];
     const hasNightTransit = transits.some(t => t.day === d && t.isNightTransit);
     
-    // Si la journée n'a pas de spots et n'est pas un transit de nuit
     if (daySpots.length === 0 && !hasNightTransit) {
       const dateStr = deltaToDateStr(d);
       alerts.push({
@@ -1293,10 +1351,75 @@ function switchLeftTab(tab) {
 }
 
 // ==========================================
-// 7. GÉNÉRATION DU ROADBOOK & IMPRESSION PDF
+// 7. ENRICHISSEMENT ET AFFICHAGE OSRM
 // ==========================================
 
-function generateRoadbookContent() {
+async function enrichTripWithOsrmRoutes() {
+  if (typeof initRouteCache === 'function') initRouteCache();
+  const totalDays = getTotalDays();
+  
+  // 1. Enrichissement des transits
+  const transits = getTransits();
+  for (const t of transits) {
+    const tCalc = calculateTransitDistances(t);
+    const points = [];
+    if (tCalc.originPoint) points.push(tCalc.originPoint);
+    tCalc.transitSpots.forEach(s => points.push(s));
+    if (tCalc.destPoint) points.push(tCalc.destPoint);
+
+    if (points.length >= 2 && typeof fetchOsrmRoute === 'function') {
+      const osrmRoutes = await fetchOsrmRoute(points, t.mode);
+      if (osrmRoutes) {
+        appState.routeCache[t.id] = osrmRoutes;
+      }
+    }
+  }
+
+  // 2. Enrichissement des journées
+  for (let d = 0; d < totalDays; d++) {
+    const dayRoute = calculateDayRoute(d);
+    let points = [];
+    if (dayRoute.originPoint) points.push(dayRoute.originPoint);
+    dayRoute.transitSpots.forEach(s => points.push(s));
+    dayRoute.spots.forEach(s => points.push(s));
+    if (dayRoute.destPoint) points.push(dayRoute.destPoint);
+
+    if (points.length >= 2 && typeof fetchOsrmRoute === 'function') {
+      const osrmRoutes = await fetchOsrmRoute(points, 'Voiture');
+      if (osrmRoutes) {
+        appState.routeCache[`day_${d}`] = osrmRoutes;
+      }
+    }
+  }
+}
+
+// Helper pour lire le cache OSRM avec fallback synchrone sur Haversine
+function getEffectiveDistanceAndDuration(cacheKey, fallbackDistanceKm) {
+  if (appState.routeCache && appState.routeCache[cacheKey]) {
+    const routes = appState.routeCache[cacheKey];
+    if (routes && routes.length > 0) {
+      return {
+        distanceKm: routes[0].distanceKm,
+        durationMin: routes[0].durationMin,
+        isOsrm: true,
+        alternatives: routes.slice(1)
+      };
+    }
+  }
+  return {
+    distanceKm: fallbackDistanceKm,
+    durationMin: null,
+    isOsrm: false,
+    alternatives: []
+  };
+}
+
+// ==========================================
+// 8. GÉNÉRATION DU ROADBOOK & IMPRESSION PDF
+// ==========================================
+
+async function generateRoadbookContent() {
+  await enrichTripWithOsrmRoutes();
   const roadbookPrintArea = document.getElementById('roadbookPrintArea');
   if (!roadbookPrintArea) return;
   const computedDates = getZoneComputedDates();
@@ -1360,6 +1483,7 @@ function generateRoadbookContent() {
     const currentZone = appState.zones.find(z => { const comp = computedDates[z.id]; return comp && day >= comp.checkinDay && day <= comp.checkoutDay; });
     const dayRoute = calculateDayRoute(day);
     const activeHotel = dayRoute.activeHotel;
+    const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${day}`, dayRoute.totalDist);
 
     const daySpotsIds = appState.dailyItineraries[day] || [];
     const daySpots = daySpotsIds.map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
@@ -1372,6 +1496,8 @@ function generateRoadbookContent() {
       transitBps = appState.bonsPlans.filter(bp => bp.target === tId);
     }
 
+    const durText = dayRouteInfo.durationMin ? ` (~${formatDuration(dayRouteInfo.durationMin)})` : '';
+
     html += `
       <div class="avoid-break border border-slate-200 rounded-xl p-4 bg-white shadow-sm space-y-3">
         <div class="flex justify-between items-center border-b pb-2">
@@ -1380,7 +1506,9 @@ function generateRoadbookContent() {
             <h3 class="text-lg font-bold text-slate-900">${dateStr}</h3>
           </div>
           <div class="text-right flex items-center space-x-2">
-            <span class="text-xs font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-1 rounded">Total jour : ${dayRoute.totalDist.toFixed(1)} km</span>
+            <span class="text-xs font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-1 rounded">
+              Total jour : ${dayRouteInfo.isOsrm ? '🚗 ' : ''}${dayRouteInfo.distanceKm.toFixed(1)} km${durText}
+            </span>
             ${currentZone ? `<span class="inline-block px-2.5 py-1 rounded text-xs font-bold text-white" style="background-color: ${currentZone.color}">${currentZone.name}</span>` : '<span class="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded">Sans zone</span>'}
           </div>
         </div>
@@ -1389,12 +1517,14 @@ function generateRoadbookContent() {
     if (dayRoute.transits && dayRoute.transits.length > 0) {
       const t = dayRoute.transits[0];
       const tCalc = calculateTransitDistances(t);
+      const tRouteInfo = getEffectiveDistanceAndDuration(t.id, tCalc.totalDist);
       const modeIcon = getTransitModeIcon(t.mode);
-      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>.</div><span class="font-mono font-bold text-emerald-700">+${tCalc.totalDist.toFixed(1)} km</span></div>`;
+      const tDurStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
+      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>.</div><span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span></div>`;
     }
 
     if (activeHotel) {
-      html += `<div class="bg-blue-50/70 border border-blue-200 p-2.5 rounded-lg text-xs text-blue-900 flex flex-col space-y-1"><div class="flex justify-between items-center"><span><i class="fas fa-hotel mr-1.5 text-blue-600"></i><strong>Hébergement actif :</strong> ${activeHotel.name}</span><span class="text-[10px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded">Rayon: ${activeHotel.radiusKm || 15} km</span></div>${activeHotel.desc ? `<div class="text-blue-800 italic">${activeHotel.desc}</div>` : ''}${activeHotel.url ? `<div><a href="${activeHotel.url}" target="_blank" class="text-indigo-600 hover:underline"><i class="fas fa-link mr-1"></i>${activeHotel.url}</a></div>` : ''}</div>`;
+      html += `<div class="bg-blue-50/70 border border-blue-200 p-2.5 rounded-lg text-xs text-blue-900 flex flex-col space-y-1"><div class="flex justify-between items-center"><span><i class="fas fa-hotel mr-1.5 text-blue-600"></i><strong>Hébergement actif :</strong> ${activeHotel.name}</span><span class="text-[10px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded">Rayon: ${activeHotel.radiusKm || 50} km</span></div>${activeHotel.desc ? `<div class="text-blue-800 italic">${activeHotel.desc}</div>` : ''}${activeHotel.url ? `<div><a href="${activeHotel.url}" target="_blank" class="text-indigo-600 hover:underline"><i class="fas fa-link mr-1"></i>${activeHotel.url}</a></div>` : ''}</div>`;
     }
 
     html += `<div class="space-y-1.5"><h4 class="text-xs font-bold text-slate-500 uppercase">Spots prévus</h4>`;
