@@ -415,6 +415,7 @@ function openHotelModal(defaultName = '', defaultDesc = '') {
   document.getElementById('hotelForm').reset();
   document.getElementById('hotelId').value = '';
   document.getElementById('hotelNights').value = 1;
+  document.getElementById('hotelRadiusKm').value = 50;
   document.getElementById('hotelModalTitle').innerText = "Ajouter un Hébergement";
   populateHotelZoneSelect();
   document.getElementById('hotelZoneSelect').value = '';
@@ -436,7 +437,7 @@ function editHotel(id) {
   document.getElementById('hotelLng').value = hotel.lng;
   document.getElementById('hotelDesc').value = hotel.desc || '';
   document.getElementById('hotelUrl').value = hotel.url || '';
-  document.getElementById('hotelRadiusKm').value = hotel.radiusKm || 15;
+  document.getElementById('hotelRadiusKm').value = hotel.radiusKm || 50;
   document.getElementById('hotelModalTitle').innerText = "Éditer l'Hébergement";
   openModal('hotelModal');
 }
@@ -801,3 +802,20 @@ function finalizeImportData() {
   alert("Importation réussie !");
 }
 
+async function openHelpModal() {
+  openModal('helpModal');
+  const container = document.getElementById('helpModalContent');
+  
+  // On ne re-télécharge pas si déjà chargé une fois
+  if (container.dataset.loaded === "true") return;
+
+  try {
+    const response = await fetch('help.html');
+    if (!response.ok) throw new Error('Erreur de chargement');
+    const htmlContent = await response.text();
+    container.innerHTML = htmlContent;
+    container.dataset.loaded = "true";
+  } catch (err) {
+    container.innerHTML = `<div class="p-6 text-red-500 text-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i> Impossible de charger le fichier d'aide (help.html).</div>`;
+  }
+}

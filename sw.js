@@ -1,4 +1,4 @@
-const CACHE_NAME = 'geovoyage-v7';
+const CACHE_NAME = 'geovoyage-v8';
 const TILE_CACHE_NAME = 'geovoyage-tiles-v1';
 
 // Liste des ressources statiques essentielles de l'application
@@ -13,6 +13,7 @@ const ASSETS_TO_CACHE = [
   './manifest.json',
   './pvi_192.png',
   './pvi_512.png',
+  './help.html',
   'https://unpkg.com/leaflset@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',

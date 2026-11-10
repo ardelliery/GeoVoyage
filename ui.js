@@ -1189,12 +1189,52 @@ function renderAllSpotsUI() {
 
 function checkCoherence() {
   const alerts = [];
+  
+  // 1. Vérification des zones sans hébergement
   appState.zones.forEach(zone => {
     const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
     if (zoneHotels.length === 0) {
       alerts.push({ type: 'danger', text: `⚠️ La zone "${zone.name}" n'a aucun hébergement rattaché.` });
+    } else {
+      // 2. Vérification des distances des spots du secteur par rapport à l'hôtel
+      const computed = getZoneComputedDates();
+      const comp = computed[zone.id];
+      if (comp) {
+        const hotel = zoneHotels[0];
+        const radius = hotel.radiusKm !== undefined ? hotel.radiusKm : 50;
+        
+        for (let d = comp.checkinDay; d < comp.checkoutDay; d++) {
+          const daySpots = (appState.dailyItineraries[d] || []).map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
+          daySpots.forEach(s => {
+            const dist = haversineDistanceKm(hotel.lat, hotel.lng, s.lat, s.lng);
+            if (dist > radius) {
+              alerts.push({ 
+                type: 'warning', 
+                text: `⚠️ Le spot "${s.name}" (Jour J+${d}) est situé à ${dist.toFixed(1)} km de l'hébergement "${hotel.name}" (supérieur au rayon de confort de ${radius} km).` 
+              });
+            }
+          });
+        }
+      }
     }
   });
+
+  // 3. Vérification des jours sans spot rattaché (Niveau Information)
+  const totalDays = getTotalDays();
+  const transits = getTransits();
+  for (let d = 0; d < totalDays; d++) {
+    const daySpots = appState.dailyItineraries[d] || [];
+    const hasNightTransit = transits.some(t => t.day === d && t.isNightTransit);
+    
+    // Si la journée n'a pas de spots et n'est pas un transit de nuit
+    if (daySpots.length === 0 && !hasNightTransit) {
+      const dateStr = deltaToDateStr(d);
+      alerts.push({
+        type: 'info',
+        text: `ℹ️ Jour J+${d} (${dateStr}) : Aucun spot n'est actuellement rattaché à cette journée (journée libre ou de repos).`
+      });
+    }
+  }
 
   const badge = document.getElementById('alertBadge');
   if (badge) {
@@ -1207,7 +1247,13 @@ function checkCoherence() {
     container.innerHTML = alerts.length === 0 ? '<p class="text-emerald-600 dark:text-emerald-400 text-sm">✅ Aucune anomalie détectée !</p>' : '';
     alerts.forEach(a => {
       const el = document.createElement('div');
-      el.className = `p-3 rounded-xl border text-sm ${a.type === 'danger' ? 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200' : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'}`;
+      let styleClass = 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200';
+      if (a.type === 'danger') {
+        styleClass = 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200';
+      } else if (a.type === 'info') {
+        styleClass = 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-sky-900 dark:text-sky-200';
+      }
+      el.className = `p-3 rounded-xl border text-sm ${styleClass}`;
       el.innerText = a.text;
       container.appendChild(el);
     });
