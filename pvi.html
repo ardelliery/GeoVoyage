@@ -116,8 +116,9 @@
         </button>
 
         <!-- Recalculer OSRM -->
-        <button id="recalculateOsrmBtn" class="h-9 w-9 bg-indigo-50 dark:bg-indigo-600/25 hover:bg-indigo-100 dark:hover:bg-indigo-600/35 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 rounded-xl text-xs font-semibold transition flex items-center justify-center designer-only shrink-0" title="Recalculer les durées OSRM">
-          <i class="fa-solid fa-stopwatch text-base text-indigo-500 dark:text-indigo-400"></i>
+        <button id="recalculateOsrmBtn" class="h-9 px-3 bg-indigo-50 dark:bg-indigo-600/25 hover:bg-indigo-100 dark:hover:bg-indigo-600/35 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 designer-only shrink-0 disabled:opacity-50 disabled:cursor-not-allowed" title="Recalculer les durées OSRM">
+          <i id="recalculateOsrmIcon" class="fa-solid fa-stopwatch text-base text-indigo-500 dark:text-indigo-400"></i>
+          <span id="recalculateOsrmText">Calculer OSRM</span>
         </button>
 
         <!-- PDF -->

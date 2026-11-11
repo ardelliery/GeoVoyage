@@ -1,51 +1,36 @@
-
-
 /**
  * Purge le cache des itinéraires OSRM et relance le calcul manuellement sur action de l'utilisateur
  */
 async function recalculateOsrmRoutes() {
   const btn = document.getElementById('recalculateOsrmBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Calcul en cours...';
-  }
+  const icon = document.getElementById('recalculateOsrmIcon');
+  const text = document.getElementById('recalculateOsrmText');
   
-  // Purge du cache
-  appState.routeCache = {};
+  if (btn) btn.disabled = true;
+  if (icon) icon.className = 'fa-solid fa-hourglass-half fa-spin text-base text-amber-500';
+  if (text) text.innerText = 'Calcul...';
+  
+  invalidateRouteCache();
   
   try {
     await enrichTripWithOsrmRoutes();
+    appState.isCacheStale = false;
     renderApp();
   } catch (err) {
     console.error("Erreur lors du recalcul OSRM :", err);
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-calculator mr-1.5"></i>Recalculer OSRM';
+    if (icon) icon.className = 'fa-solid fa-stopwatch text-base text-indigo-500 dark:text-indigo-400';
+    if (text) text.innerText = 'Calculer OSRM';
+    if (typeof updateRecalculateButtonState === 'function') {
+      updateRecalculateButtonState();
     }
   }
 }
 
-// Fonction de purge simple à appeler au besoin
 function clearRouteCache() {
-  appState.routeCache = {};
+  invalidateRouteCache();
 }
 
-
-/* ==========================================================================
-   GeoVoyage - UI Rendering & Interactions (ui.js)
-   Version complète avec affichage des durées OSRM au format Heures & Minutes (uniquement pour voiture, bus, autocar, vélo)
-   ========================================================================== */
-
-// ==========================================
-// 0. FONCTIONS UTILITAIRES DE FORMATAGE
-// ==========================================
-
-/**
- * Formate une durée en minutes au format lisible "Xh Ymin" ou "Ymin"
- * @param {number} minutes 
- * @returns {string}
- */
 function formatDuration(minutes) {
   if (!minutes || minutes <= 0) return '';
   const totalMin = Math.round(minutes);
@@ -62,17 +47,9 @@ function formatDuration(minutes) {
   }
 }
 
-/**
- * Détermine si le mode de transport doit utiliser l'évaluation routière/distance (OSRM)
- * Exclut l'avion, le train, le bateau et les transits de nuit.
- * @param {string} mode 
- * @param {boolean} isNightTransit 
- * @returns {boolean}
- */
 function isRoadTransitMode(mode, isNightTransit) {
   if (isNightTransit) return false;
   const normalized = (mode || 'Voiture').toLowerCase();
-  // Exclure avion, train, bateau, ferry
   if (normalized.includes('avion') || 
       normalized.includes('train') || 
       normalized.includes('bateau') || 
@@ -82,10 +59,6 @@ function isRoadTransitMode(mode, isNightTransit) {
   }
   return true;
 }
-
-// ==========================================
-// 1. GESTION DU THÈME (SOMBRE / CLAIR)
-// ==========================================
 
 function updateThemeUI() {
   const isDark = document.documentElement.classList.contains('dark');
@@ -105,10 +78,6 @@ function toggleTheme() {
   }
 }
 
-// ==========================================
-// 2. INITIALISATION ET CHARGEMENT GLOBAL
-// ==========================================
-
 window.onload = async function() {
   updateThemeUI();
   loadFromLocalStorage();
@@ -127,6 +96,7 @@ window.onload = async function() {
     pivotInput.value = appState.pivotDate;
     pivotInput.addEventListener('change', (e) => {
       appState.pivotDate = e.target.value;
+      invalidateRouteCache();
       renderApp();
     });
   }
@@ -189,22 +159,22 @@ window.onload = async function() {
   }
   renderApp();
 
-  // Enrichissement automatique au chargement pour afficher les durées OSRM dès le départ
   enrichTripWithOsrmRoutes().then(() => {
+    appState.isCacheStale = false;
+    if (typeof updateRecalculateButtonState === 'function') {
+      updateRecalculateButtonState();
+    }
     renderApp();
   });
 
   setTimeout(() => {
     if (map) {
       map.invalidateSize();
+      shouldFitBoundsOnce = true;
       renderMapMarkers();
     }
   }, 300);
 };
-
-// ==========================================
-// 3. MODES D'AFFICHAGE & VUES
-// ==========================================
 
 function switchViewMode(mode) {
   appState.viewMode = mode;
@@ -337,56 +307,9 @@ function moveZoneOrder(index, direction) {
   appState.zones[index] = appState.zones[targetIndex];
   appState.zones[targetIndex] = temp;
   cleanOrphanTransitsAndTargets();
-    renderApp();
+  invalidateRouteCache();
+  renderApp();
 }
-
-function locateAndHighlightItem(type, itemId) {
-  let targetTab = 'allspots';
-  let targetDay = null;
-
-  if (type === 'hotel' || type === 'endpoint') {
-    targetTab = 'structure';
-  } else if (type === 'spot') {
-    let assignedDay = null;
-    Object.keys(appState.dailyItineraries).forEach(d => {
-      if (appState.dailyItineraries[d] && appState.dailyItineraries[d].includes(itemId)) assignedDay = parseInt(d);
-    });
-    const spot = appState.spots.find(s => s.id === itemId);
-    if (spot && spot.target) {
-      const tObj = getTransits().find(t => t.id === spot.target);
-      if (tObj) assignedDay = tObj.day;
-    }
-    if (assignedDay !== null) { targetTab = 'planning'; targetDay = assignedDay; }
-  } else if (type === 'bonplan') {
-    let assignedDay = null;
-    Object.keys(appState.dailyBonsPlans).forEach(d => {
-      if (appState.dailyBonsPlans[d] && appState.dailyBonsPlans[d].includes(itemId)) assignedDay = parseInt(d);
-    });
-    const bp = appState.bonsPlans.find(b => b.id === itemId);
-    if (bp && bp.target) {
-      const tObj = getTransits().find(t => t.id === bp.target);
-      if (tObj) assignedDay = tObj.day;
-    }
-    if (assignedDay !== null) { targetTab = 'planning'; targetDay = assignedDay; }
-  }
-
-  if (targetTab === 'planning' && targetDay !== null) appState.currentSelectedDay = targetDay;
-  switchLeftTab(targetTab);
-
-  setTimeout(() => {
-    const elementId = `card-${type}-${itemId}`;
-    const targetEl = document.getElementById(elementId);
-    if (targetEl) {
-      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      targetEl.classList.add('highlight-card');
-      setTimeout(() => targetEl.classList.remove('highlight-card'), 3000);
-    }
-  }, 100);
-}
-
-// ==========================================
-// 4. VUE VOYAGEUR & STRUCTURE
-// ==========================================
 
 function renderTravelerUI() {
   const curDay = appState.currentSelectedDay;
@@ -494,9 +417,7 @@ function renderTravelerUI() {
       routeContainer.appendChild(hotelEl);
     }
 
-    // Vérifier si le transit du jour autorise l'évaluation routière/durée
     const isRoadDay = activeTransit ? isRoadTransitMode(activeTransit.mode, activeTransit.isNightTransit) : true;
-    const dayRouteInfo = isRoadDay ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist) : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
 
     daySpotIds.forEach((spotId, idx) => {
       const spot = appState.spots.find(s => s.id === spotId);
@@ -505,13 +426,12 @@ function renderTravelerUI() {
       const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
       let segmentDisplay = `+${segDist.toFixed(1)} km`;
-      if (isRoadDay && dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
-        const ratio = segDist / dayRoute.totalDist;
-        const segmentMin = dayRouteInfo.durationMin * ratio;
-        const durFormatted = formatDuration(segmentMin);
-        segmentDisplay = `🚗 +${segDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
-      } else {
-        segmentDisplay = `+${segDist.toFixed(1)} km`;
+      if (isRoadDay) {
+        const segData = getSegmentOsrmData(`day_${curDay}`, idx, segDist, dayRoute.totalDist);
+        const durFormatted = formatDuration(segData.durationMin);
+        segmentDisplay = segData.isOsrm 
+          ? `🚗 +${segData.distanceKm.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`
+          : `+${segDist.toFixed(1)} km`;
       }
 
       const el = document.createElement('div');
@@ -602,7 +522,7 @@ function renderStructureUI() {
     <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
       <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${idx + 1}) ${s.name}</span>
       <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
         <button onclick="editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
         <button onclick="unassignSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
       </div>
@@ -854,20 +774,18 @@ function renderStructureUI() {
 function detachSpotFromDay(day, spotId) {
   if (appState.dailyItineraries[day]) {
     appState.dailyItineraries[day] = appState.dailyItineraries[day].filter(id => id !== spotId);
-        renderApp();
+    invalidateRouteCache();
+    renderApp();
   }
 }
 
 function detachBonPlanFromDay(day, bonPlanId) {
   if (appState.dailyBonsPlans[day]) {
     appState.dailyBonsPlans[day] = appState.dailyBonsPlans[day].filter(id => id !== bonPlanId);
-        renderApp();
+    invalidateRouteCache();
+    renderApp();
   }
 }
-
-// ==========================================
-// 5. PLANNING QUOTIDIEN
-// ==========================================
 
 function renderPlanningUI() {
   const curDay = appState.currentSelectedDay;
@@ -982,15 +900,13 @@ function renderPlanningUI() {
         const transitSegDist = dayRoute.segmentsDistances[tIdx] !== undefined ? dayRoute.segmentsDistances[tIdx] : 0;
         const parentSpot = ts.parentId ? appState.spots.find(p => p.id === ts.parentId) : null;
         
-        const transitRouteInfo = (activeTransitId && isCurrentDayRoad) ? getEffectiveDistanceAndDuration(activeTransitId, dayRoute.totalDist) : { isOsrm: false, durationMin: null };
         let transitSegDisplay = `+${transitSegDist.toFixed(1)} km`;
-        if (isCurrentDayRoad && transitRouteInfo.isOsrm && transitRouteInfo.durationMin && dayRoute.totalDist > 0) {
-          const ratio = transitSegDist / dayRoute.totalDist;
-          const segmentMin = transitRouteInfo.durationMin * ratio;
-          const durFormatted = formatDuration(segmentMin);
-          transitSegDisplay = `🚗 +${transitSegDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
-        } else {
-          transitSegDisplay = `+${transitSegDist.toFixed(1)} km`;
+        if (isCurrentDayRoad && activeTransitId) {
+          const segData = getSegmentOsrmData(activeTransitId, tIdx, transitSegDist, dayRoute.totalDist);
+          const durFormatted = formatDuration(segData.durationMin);
+          transitSegDisplay = segData.isOsrm 
+            ? `🚗 +${segData.distanceKm.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`
+            : `+${transitSegDist.toFixed(1)} km`;
         }
 
         const tItem = document.createElement('div');
@@ -1030,15 +946,13 @@ function renderPlanningUI() {
       const segDist = dayRoute.segmentsDistances[offsetIndex] !== undefined ? dayRoute.segmentsDistances[offsetIndex] : 0;
       const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
-      const dayRouteInfo = isCurrentDayRoad ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist) : { isOsrm: false, durationMin: null };
       let segmentDisplay = `+${segDist.toFixed(1)} km`;
-      if (isCurrentDayRoad && dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
-        const ratio = segDist / dayRoute.totalDist;
-        const segmentMin = dayRouteInfo.durationMin * ratio;
-        const durFormatted = formatDuration(segmentMin);
-        segmentDisplay = `🚗 +${segDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
-      } else {
-        segmentDisplay = `+${segDist.toFixed(1)} km`;
+      if (isCurrentDayRoad) {
+        const segData = getSegmentOsrmData(`day_${curDay}`, offsetIndex, segDist, dayRoute.totalDist);
+        const durFormatted = formatDuration(segData.durationMin);
+        segmentDisplay = segData.isOsrm 
+          ? `🚗 +${segData.distanceKm.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`
+          : `+${segDist.toFixed(1)} km`;
       }
 
       const item = document.createElement('div');
@@ -1146,7 +1060,8 @@ function addSpotToCurrentDay() {
   const curDay = appState.currentSelectedDay;
   if (!appState.dailyItineraries[curDay]) appState.dailyItineraries[curDay] = [];
   if (!appState.dailyItineraries[curDay].includes(spotId)) appState.dailyItineraries[curDay].push(spotId);
-    renderApp();
+  invalidateRouteCache();
+  renderApp();
 }
 
 function addBonPlanToCurrentDay() {
@@ -1157,7 +1072,8 @@ function addBonPlanToCurrentDay() {
   const curDay = appState.currentSelectedDay;
   if (!appState.dailyBonsPlans[curDay]) appState.dailyBonsPlans[curDay] = [];
   if (!appState.dailyBonsPlans[curDay].includes(bpId)) appState.dailyBonsPlans[curDay].push(bpId);
-    renderApp();
+  invalidateRouteCache();
+  renderApp();
 }
 
 function moveSpotInDay(day, idx, direction) {
@@ -1168,7 +1084,8 @@ function moveSpotInDay(day, idx, direction) {
     const temp = list[idx];
     list[idx] = list[targetIdx];
     list[targetIdx] = temp;
-        renderApp();
+    invalidateRouteCache();
+    renderApp();
   }
 }
 
@@ -1180,27 +1097,26 @@ function moveTransitSpot(transitId, idx, direction) {
     const temp = list[idx];
     list[idx] = list[targetIdx];
     list[targetIdx] = temp;
-        renderApp();
+    invalidateRouteCache();
+    renderApp();
   }
 }
 
 function removeSpotFromDay(day, idx) {
   if (appState.dailyItineraries[day]) {
     appState.dailyItineraries[day].splice(idx, 1);
-        renderApp();
+    invalidateRouteCache();
+    renderApp();
   }
 }
 
 function removeBonPlanFromDay(day, idx) {
   if (appState.dailyBonsPlans[day]) {
     appState.dailyBonsPlans[day].splice(idx, 1);
-        renderApp();
+    invalidateRouteCache();
+    renderApp();
   }
 }
-
-// ==========================================
-// 6. LISTE DE TOUS LES SPOTS ET BONS PLANS
-// ==========================================
 
 function renderAllSpotsUI() {
   const validTransits = getTransits();
@@ -1457,17 +1373,12 @@ function switchLeftTab(tab) {
   renderTimelineHeader();
 }
 
-// ==========================================
-// 7. ENRICHISSEMENT ET AFFICHAGE OSRM
-// ==========================================
-
 async function enrichTripWithOsrmRoutes() {
   if (typeof initRouteCache === 'function') initRouteCache();
   const totalDays = getTotalDays();
   
   const transits = getTransits();
   for (const t of transits) {
-    // Si c'est un transit en train, avion, bateau ou de nuit, on ne cherche pas de route OSRM routière
     if (!isRoadTransitMode(t.mode, t.isNightTransit)) continue;
 
     const tCalc = calculateTransitDistances(t);
@@ -1487,7 +1398,6 @@ async function enrichTripWithOsrmRoutes() {
   for (let d = 0; d < totalDays; d++) {
     const transitsForDay = transits.filter(t => t.day === d);
     const dayTransit = transitsForDay.length > 0 ? transitsForDay[0] : null;
-    // Si la journée est sous un mode de transport non routier (avion, train, bateau...), on ignore OSRM
     if (dayTransit && !isRoadTransitMode(dayTransit.mode, dayTransit.isNightTransit)) continue;
 
     const dayRoute = calculateDayRoute(d);
@@ -1505,30 +1415,6 @@ async function enrichTripWithOsrmRoutes() {
     }
   }
 }
-
-function getEffectiveDistanceAndDuration(cacheKey, fallbackDistanceKm) {
-  if (appState.routeCache && appState.routeCache[cacheKey]) {
-    const routes = appState.routeCache[cacheKey];
-    if (routes && routes.length > 0) {
-      return {
-        distanceKm: routes[0].distanceKm,
-        durationMin: routes[0].durationMin,
-        isOsrm: true,
-        alternatives: routes.slice(1)
-      };
-    }
-  }
-  return {
-    distanceKm: fallbackDistanceKm,
-    durationMin: null,
-    isOsrm: false,
-    alternatives: []
-  };
-}
-
-// ==========================================
-// 8. GÉNÉRATION DU ROADBOOK & IMPRESSION PDF
-// ==========================================
 
 async function generateRoadbookContent() {
   await enrichTripWithOsrmRoutes();
@@ -1656,11 +1542,12 @@ async function generateRoadbookContent() {
         const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
 
         let segDisplay = `+${segDist.toFixed(1)} km`;
-        if (isDayRoad && dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
-          const ratio = segDist / dayRoute.totalDist;
-          const segmentMin = dayRouteInfo.durationMin * ratio;
-          const durFormatted = formatDuration(segmentMin);
-          segDisplay = `+${segDist.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`;
+        if (isDayRoad) {
+          const segData = getSegmentOsrmData(`day_${day}`, idx, segDist, dayRoute.totalDist);
+          const durFormatted = formatDuration(segData.durationMin);
+          segDisplay = segData.isOsrm 
+            ? `+${segData.distanceKm.toFixed(1)} km${durFormatted ? ` (~${durFormatted})` : ''}`
+            : `+${segDist.toFixed(1)} km`;
         }
 
         html += `
@@ -1707,9 +1594,6 @@ async function generateRoadbookContent() {
   } else {
     if (appState.spots.length > 0) {
       html += `<div class="avoid-break space-y-3"><h3 class="text-lg font-bold text-slate-800 border-l-4 border-emerald-500 pl-2">Tous les Spots</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">`;
-      appState.spots.files && appState.spots.forEach(s => {
-        // ...
-      });
       appState.spots.forEach(s => {
         const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
         html += `
@@ -1745,4 +1629,63 @@ async function generateRoadbookContent() {
 
   html += `</div>`;
   roadbookPrintArea.innerHTML = html;
+}
+
+function locateAndHighlightItem(type, id) {
+  // Fermer la popup active sur la carte
+  if (map) map.closePopup();
+
+  let targetDay = null;
+
+  if (type === 'spot') {
+    // Vérifier si le spot est assigné à une journée
+    Object.keys(appState.dailyItineraries).forEach(d => {
+      if (appState.dailyItineraries[d] && appState.dailyItineraries[d].includes(id)) {
+        targetDay = parseInt(d);
+      }
+    });
+
+    if (targetDay !== null) {
+      // S'il est associé à un jour, basculer sur l'onglet Planning
+      appState.currentSelectedDay = targetDay;
+      switchLeftTab('planning');
+    } else {
+      // Sinon, basculer sur l'onglet Tous les Spots / Structure
+      switchLeftTab('allspots');
+    }
+  } else if (type === 'bonplan') {
+    Object.keys(appState.dailyBonsPlans).forEach(d => {
+      if (appState.dailyBonsPlans[d] && appState.dailyBonsPlans[d].includes(id)) {
+        targetDay = parseInt(d);
+      }
+    });
+
+    if (targetDay !== null) {
+      appState.currentSelectedDay = targetDay;
+      switchLeftTab('planning');
+    } else {
+      switchLeftTab('allspots');
+    }
+  } else {
+    // Pour les hôtels ou départ/arrivée, on bascule sur la structure
+    switchLeftTab('structure');
+  }
+
+  // Laisser le DOM se rafraîchir puis cibler et faire clignoter l'élément dans la liste
+  setTimeout(() => {
+    let cardId = '';
+    if (type === 'spot') cardId = `card-spot-${id}`;
+    else if (type === 'hotel') cardId = `card-hotel-${id}`;
+    else if (type === 'bonplan') cardId = `card-bonplan-${id}`;
+    else if (type === 'endpoint') cardId = `card-endpoint-${id}`;
+
+    const card = document.getElementById(cardId);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('ring-4', 'ring-indigo-500', 'transition-all', 'duration-500');
+      setTimeout(() => {
+        card.classList.remove('ring-4', 'ring-indigo-500');
+      }, 2000);
+    }
+  }, 100);
 }

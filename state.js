@@ -1,4 +1,3 @@
-
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(err => {
@@ -34,7 +33,9 @@ let appState = {
   transitSpotOrder: {
     'transit_dep_first': ['s_beaune']
   },
-  mapFocusMode: false
+  mapFocusMode: false,
+  isCacheStale: false,
+  routeCache: {}
 };
 
 let map = null;
@@ -63,7 +64,11 @@ function loadFromLocalStorage() {
       if (!appState.viewMode) appState.viewMode = 'designer';
       if (!appState.name) appState.name = "Mon Voyage GeoVoyage";
       if (appState.mapFocusMode === undefined) appState.mapFocusMode = false;
+      if (appState.isCacheStale === undefined) appState.isCacheStale = false;
+      if (!appState.routeCache) appState.routeCache = {};
       if (appState.spots) appState.spots.forEach(s => { if (s.parentId === undefined) s.parentId = ''; });
+      
+      updateRecalculateButtonState();
       return true;
     }
   } catch (e) {
@@ -101,6 +106,7 @@ function loadDemoData() {
   appState.dailyItineraries = {};
   appState.dailyBonsPlans = {};
   shouldFitBoundsOnce = true;
+  invalidateRouteCache();
   renderApp();
 }
 
@@ -111,6 +117,7 @@ function resetTrip() {
   appState.zones = []; appState.hotels = []; appState.spots = []; appState.bonsPlans = []; appState.customTransits = [];
   appState.dailyItineraries = {}; appState.dailyBonsPlans = {}; appState.transitSpotOrder = {}; appState.currentSelectedDay = 0;
   shouldFitBoundsOnce = true;
+  invalidateRouteCache();
   saveToLocalStorage();
   renderApp();
 }
@@ -212,7 +219,6 @@ function getZoneComputedDates() {
   });
   return mapping;
 }
-
 
 function getTotalDays() {
   const computed = getZoneComputedDates();
@@ -395,26 +401,23 @@ function cleanOrphanTransitsAndTargets() {
 
 function getOsrmProfile(mode) {
   if (mode === 'Vélo') return 'bicycle';
-  // Par défaut, voiture pour Voiture, Autocar, Transports en commun routiers
   return 'car';
 }
 
 async function fetchOsrmRoute(points, mode = 'Voiture') {
   if (!points || points.length < 2) return null;
   
-  // Seuls les modes routiers supportent OSRM standard
   if (mode === 'Avion' || mode === 'Bateau' || mode === 'À pied') {
     return null;
   }
 
   const profile = getOsrmProfile(mode);
-  // Format des coordonnées OSRM : lon1,lat1;lon2,lat2;...
   const coordsStr = points.map(p => `${p.lng},${p.lat}`).join(';');
-  const url = `https://router.project-osrm.org/route/v1/${profile}/${coordsStr}?overview=false&alternatives=true`;
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coordsStr}?overview=false&alternatives=true&steps=false`;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // Timeout 4s non bloquant
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -423,47 +426,101 @@ async function fetchOsrmRoute(points, mode = 'Voiture') {
     const data = await res.json();
 
     if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-      // Retourne les routes trouvées (la plus rapide et les alternatives)
-      return data.routes.map(r => ({
-        distanceKm: r.distance / 1000,
-        durationMin: r.duration / 60
-      }));
+      const mainRoute = data.routes[0];
+      return {
+        distanceKm: mainRoute.distance / 1000,
+        durationMin: mainRoute.duration / 60,
+        legs: (mainRoute.legs || []).map(leg => ({
+          distanceKm: leg.distance / 1000,
+          durationMin: leg.duration / 60
+        })),
+        alternatives: data.routes.slice(1).map(r => ({
+          distanceKm: r.distance / 1000,
+          durationMin: r.duration / 60
+        }))
+      };
     }
   } catch (err) {
-    // Mode offline ou timeout : on échoue silencieusement pour retomber sur Haversine
     console.log("OSRM non disponible (offline/timeout), repli sur Haversine.");
   }
   return null;
 }
 
-// Initialisation du cache de route global dans l'état si absent
 function initRouteCache() {
   if (!appState.routeCache) appState.routeCache = {};
 }
 
-function invalidateRouteCache() {
-  appState.routeCache = {};
+function updateRecalculateButtonState() {
+  const btn = document.getElementById('recalculateOsrmBtn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.classList.remove('opacity-50', 'cursor-not-allowed');
 }
 
-// Récupère la distance et durée (OSRM en priorité, sinon Haversine)
+/**
+ * PURGE GLOBALE DU CACHE OSRM DU VOYAGE
+ */
+function invalidateRouteCache() {
+  appState.routeCache = {};
+  appState.isCacheStale = true;
+  updateRecalculateButtonState();
+  console.log("Cache OSRM global invalidé : tout sera recalculé proprement.");
+}
+
 function getEffectiveDistanceAndDuration(cacheKey, fallbackDistanceKm) {
   if (appState.routeCache && appState.routeCache[cacheKey]) {
-    const routes = appState.routeCache[cacheKey];
-    // On prend la première route (la plus rapide)
-    if (routes && routes.length > 0) {
+    const route = appState.routeCache[cacheKey];
+    if (route && route.distanceKm !== undefined) {
       return {
-        distanceKm: routes[0].distanceKm,
-        durationMin: routes[0].durationMin,
+        distanceKm: route.distanceKm,
+        durationMin: route.durationMin,
+        legs: route.legs || [],
         isOsrm: true,
-        alternatives: routes.slice(1) // Pour les alternatives (Route 2)
+        alternatives: route.alternatives || []
       };
     }
   }
-  // Repli par défaut sur Haversine
   return {
     distanceKm: fallbackDistanceKm,
     durationMin: null,
+    legs: [],
     isOsrm: false,
     alternatives: []
+  };
+}
+
+/**
+ * Récupère le tronçon réel (leg) d'OSRM s'il existe, sinon effectue le repli Haversine / Prorata
+ */
+function getSegmentOsrmData(cacheKey, segmentIndex, fallbackDistKm, totalDayFallbackDist) {
+  if (appState.routeCache && appState.routeCache[cacheKey]) {
+    const routeObj = appState.routeCache[cacheKey];
+    
+    // 1. Tronçon réel (leg) exact renvoyé par OSRM
+    if (routeObj && routeObj.legs && routeObj.legs[segmentIndex]) {
+      const leg = routeObj.legs[segmentIndex];
+      return {
+        distanceKm: leg.distanceKm,
+        durationMin: leg.durationMin,
+        isOsrm: true
+      };
+    }
+    
+    // 2. Prorata si les legs ne sont pas complets mais la route globale OSRM existe
+    if (routeObj && routeObj.distanceKm && totalDayFallbackDist > 0) {
+      const ratio = fallbackDistKm / totalDayFallbackDist;
+      return {
+        distanceKm: routeObj.distanceKm * ratio,
+        durationMin: routeObj.durationMin ? routeObj.durationMin * ratio : null,
+        isOsrm: true
+      };
+    }
+  }
+
+  // 3. Repli Haversine strict (Vol d'oiseau)
+  return {
+    distanceKm: fallbackDistKm,
+    durationMin: null,
+    isOsrm: false
   };
 }

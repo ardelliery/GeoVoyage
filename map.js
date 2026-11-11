@@ -1,3 +1,8 @@
+/* ==========================================================================
+   GeoVoyage - Carte Leaflet et géolocalisation (map.js)
+   Version mise à jour avec invalidation automatique du cache OSRM (invalidateRouteCache)
+   ========================================================================== */
+
 function renderMapMarkers() {
   if (!map) return;
   mapMarkers.forEach(m => map.removeLayer(m));
@@ -113,11 +118,19 @@ function onMapClick(e) {
     appState.departurePoint.lat = parseFloat(lat.toFixed(6));
     appState.departurePoint.lng = parseFloat(lng.toFixed(6));
     cleanOrphanTransitsAndTargets();
+    
+    // ➔ Invalidation du cache OSRM (changement de coordonnées sur la carte)
+    if (typeof invalidateRouteCache === 'function') invalidateRouteCache();
+    
     renderApp();
   } else if (mapPickMode === 'endpoint_arrival') {
     appState.arrivalPoint.lat = parseFloat(lat.toFixed(6));
     appState.arrivalPoint.lng = parseFloat(lng.toFixed(6));
     cleanOrphanTransitsAndTargets();
+    
+    // ➔ Invalidation du cache OSRM
+    if (typeof invalidateRouteCache === 'function') invalidateRouteCache();
+    
     renderApp();
   } else if (mapPickMode === 'spot') {
     document.getElementById('spotLat').value = lat.toFixed(6);
@@ -268,8 +281,7 @@ async function searchLocation() {
 
 function quickAdd(type, lat, lng, name = '', desc = '') {
   map.closePopup();
-  if (type === 'spot') { openSpotModal(name, desc); document.getElementById('spotLat').value = lat; document.getElementById('spotLng').value = lng; }
-  else if (type === 'hotel') { openHotelModal(name, desc); document.getElementById('hotelLat').value = lat; document.getElementById('hotelLng').value = lng; }
-  else if (type === 'bonplan') { openBonPlanModal(name, desc); document.getElementById('bonPlanLat').value = lat; document.getElementById('bonPlanLng').value = lng; }
+  if (type === 'spot') { openSpotModal(); document.getElementById('spotLat').value = lat; document.getElementById('spotLng').value = lng; if (name) document.getElementById('spotName').value = name; if (desc) document.getElementById('spotDesc').value = desc; }
+  else if (type === 'hotel') { openHotelModal(); document.getElementById('hotelLat').value = lat; document.getElementById('hotelLng').value = lng; if (name) document.getElementById('hotelName').value = name; if (desc) document.getElementById('hotelDesc').value = desc; }
+  else if (type === 'bonplan') { openBonPlanModal(); document.getElementById('bonPlanLat').value = lat; document.getElementById('bonPlanLng').value = lng; if (name) document.getElementById('bonPlanTitle').value = name; if (desc) document.getElementById('bonPlanDesc').value = desc; }
 }
-
