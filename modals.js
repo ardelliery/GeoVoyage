@@ -1223,6 +1223,9 @@ async function exportZIP() {
   const zip = new JSZip();
   const exportData = JSON.parse(JSON.stringify(appState));
   
+  // S'assurer que pivotDate est explicitement conservée
+  exportData.pivotDate = appState.pivotDate;
+
   // Suppression du cache d'itinéraire volumineux dans l'export JSON
   delete exportData.routeCache;
 
