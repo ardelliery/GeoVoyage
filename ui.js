@@ -1,6 +1,40 @@
+
+
+/**
+ * Purge le cache des itinéraires OSRM et relance le calcul manuellement sur action de l'utilisateur
+ */
+async function recalculateOsrmRoutes() {
+  const btn = document.getElementById('recalculateOsrmBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Calcul en cours...';
+  }
+  
+  // Purge du cache
+  appState.routeCache = {};
+  
+  try {
+    await enrichTripWithOsrmRoutes();
+    renderApp();
+  } catch (err) {
+    console.error("Erreur lors du recalcul OSRM :", err);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-calculator mr-1.5"></i>Recalculer OSRM';
+    }
+  }
+}
+
+// Fonction de purge simple à appeler au besoin
+function clearRouteCache() {
+  appState.routeCache = {};
+}
+
+
 /* ==========================================================================
    GeoVoyage - UI Rendering & Interactions (ui.js)
-   Version complète avec affichage des durées OSRM au format Heures & Minutes (Segments et Transits inclus)
+   Version complète avec affichage des durées OSRM au format Heures & Minutes (uniquement pour voiture, bus, autocar, vélo)
    ========================================================================== */
 
 // ==========================================
@@ -26,6 +60,27 @@ function formatDuration(minutes) {
     const minsStr = mins < 10 ? `0${mins}` : `${mins}`;
     return `${hrs}h ${minsStr} min`;
   }
+}
+
+/**
+ * Détermine si le mode de transport doit utiliser l'évaluation routière/distance (OSRM)
+ * Exclut l'avion, le train, le bateau et les transits de nuit.
+ * @param {string} mode 
+ * @param {boolean} isNightTransit 
+ * @returns {boolean}
+ */
+function isRoadTransitMode(mode, isNightTransit) {
+  if (isNightTransit) return false;
+  const normalized = (mode || 'Voiture').toLowerCase();
+  // Exclure avion, train, bateau, ferry
+  if (normalized.includes('avion') || 
+      normalized.includes('train') || 
+      normalized.includes('bateau') || 
+      normalized.includes('ferry') ||
+      normalized.includes('vol')) {
+    return false;
+  }
+  return true;
 }
 
 // ==========================================
@@ -121,6 +176,11 @@ window.onload = async function() {
     });
   }
 
+  const recalculateBtn = document.getElementById('recalculateOsrmBtn');
+  if (recalculateBtn) {
+    recalculateBtn.addEventListener('click', recalculateOsrmRoutes);
+  }
+
   switchViewMode(appState.viewMode || 'designer');
   switchLeftTab(appState.activeTab || 'structure');
   if (appState.mapFocusMode) {
@@ -128,6 +188,11 @@ window.onload = async function() {
     toggleMapFocus();
   }
   renderApp();
+
+  // Enrichissement automatique au chargement pour afficher les durées OSRM dès le départ
+  enrichTripWithOsrmRoutes().then(() => {
+    renderApp();
+  });
 
   setTimeout(() => {
     if (map) {
@@ -272,7 +337,7 @@ function moveZoneOrder(index, direction) {
   appState.zones[index] = appState.zones[targetIndex];
   appState.zones[targetIndex] = temp;
   cleanOrphanTransitsAndTargets();
-  renderApp();
+    renderApp();
 }
 
 function locateAndHighlightItem(type, itemId) {
@@ -429,15 +494,18 @@ function renderTravelerUI() {
       routeContainer.appendChild(hotelEl);
     }
 
+    // Vérifier si le transit du jour autorise l'évaluation routière/durée
+    const isRoadDay = activeTransit ? isRoadTransitMode(activeTransit.mode, activeTransit.isNightTransit) : true;
+    const dayRouteInfo = isRoadDay ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist) : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
+
     daySpotIds.forEach((spotId, idx) => {
       const spot = appState.spots.find(s => s.id === spotId);
       if (!spot) return;
       const segDist = dayRoute.segmentsDistances[idx] !== undefined ? dayRoute.segmentsDistances[idx] : 0;
       const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
-      const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
       let segmentDisplay = `+${segDist.toFixed(1)} km`;
-      if (dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
+      if (isRoadDay && dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
         const ratio = segDist / dayRoute.totalDist;
         const segmentMin = dayRouteInfo.durationMin * ratio;
         const durFormatted = formatDuration(segmentMin);
@@ -490,7 +558,12 @@ function renderTravelerUI() {
     });
   }
 
-  const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
+  const dayRouteCalc = calculateDayRoute(curDay);
+  const transitsForDay = getTransits().filter(t => t.day === curDay);
+  const activeTForDay = transitsForDay.length > 0 ? transitsForDay[0] : null;
+  const isRoadDayForDist = activeTForDay ? isRoadTransitMode(activeTForDay.mode, activeTForDay.isNightTransit) : true;
+  const dayRouteInfo = isRoadDayForDist ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRouteCalc.totalDist) : { isOsrm: false, distanceKm: dayRouteCalc.totalDist, durationMin: null };
+
   const distEl = document.getElementById('travelerDayDistance');
   if (distEl) {
     const durStr = dayRouteInfo.durationMin ? ` (~${formatDuration(dayRouteInfo.durationMin)})` : '';
@@ -515,7 +588,8 @@ function renderStructureUI() {
 
   const depTransit = getTransits().find(t => t.id === 'transit_dep_first');
   const depTransitCalc = depTransit ? calculateTransitDistances(depTransit) : null;
-  const depRouteInfo = depTransitCalc ? getEffectiveDistanceAndDuration(depTransit.id, depTransitCalc.totalDist) : null;
+  const isDepRoad = depTransit ? isRoadTransitMode(depTransit.mode, depTransit.isNightTransit) : true;
+  const depRouteInfo = (depTransitCalc && isDepRoad) ? getEffectiveDistanceAndDuration(depTransit.id, depTransitCalc.totalDist) : null;
 
   const depTransitSpots = appState.spots.filter(s => s.target === 'transit_dep_first');
   const depTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_dep_first');
@@ -685,7 +759,8 @@ function renderStructureUI() {
     const nextTransitId = index < appState.zones.length - 1 ? `transit_${zone.id}_${appState.zones[index+1].id}` : null;
     const nextTransit = nextTransitId ? getTransits().find(t => t.id === nextTransitId) : null;
     const nextTransitCalc = nextTransit ? calculateTransitDistances(nextTransit) : null;
-    const nextRouteInfo = (nextTransit && nextTransitCalc) ? getEffectiveDistanceAndDuration(nextTransit.id, nextTransitCalc.totalDist) : null;
+    const isNextRoad = nextTransit ? isRoadTransitMode(nextTransit.mode, nextTransit.isNightTransit) : true;
+    const nextRouteInfo = (nextTransitCalc && isNextRoad) ? getEffectiveDistanceAndDuration(nextTransit.id, nextTransitCalc.totalDist) : null;
     const nextTransitSpots = nextTransit ? appState.spots.filter(s => s.target === nextTransit.id) : [];
 
     if (nextTransit) {
@@ -713,7 +788,8 @@ function renderStructureUI() {
 
   const arrTransit = getTransits().find(t => t.id === 'transit_last_arr');
   const arrTransitCalc = arrTransit ? calculateTransitDistances(arrTransit) : null;
-  const arrRouteInfo = (arrTransit && arrTransitCalc) ? getEffectiveDistanceAndDuration(arrTransit.id, arrTransitCalc.totalDist) : null;
+  const isArrRoad = arrTransit ? isRoadTransitMode(arrTransit.mode, arrTransit.isNightTransit) : true;
+  const arrRouteInfo = (arrTransitCalc && isArrRoad) ? getEffectiveDistanceAndDuration(arrTransit.id, arrTransitCalc.totalDist) : null;
   const arrTransitSpots = appState.spots.filter(s => s.target === 'transit_last_arr');
   const arrTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_last_arr');
 
@@ -778,14 +854,14 @@ function renderStructureUI() {
 function detachSpotFromDay(day, spotId) {
   if (appState.dailyItineraries[day]) {
     appState.dailyItineraries[day] = appState.dailyItineraries[day].filter(id => id !== spotId);
-    renderApp();
+        renderApp();
   }
 }
 
 function detachBonPlanFromDay(day, bonPlanId) {
   if (appState.dailyBonsPlans[day]) {
     appState.dailyBonsPlans[day] = appState.dailyBonsPlans[day].filter(id => id !== bonPlanId);
-    renderApp();
+        renderApp();
   }
 }
 
@@ -815,7 +891,8 @@ function renderPlanningUI() {
     if (dayRoute.transits && dayRoute.transits.length > 0) {
       const t = dayRoute.transits[0];
       const tCalc = calculateTransitDistances(t);
-      const tRouteInfo = getEffectiveDistanceAndDuration(t.id, tCalc.totalDist);
+      const isTuningRoad = isRoadTransitMode(t.mode, t.isNightTransit);
+      const tRouteInfo = isTuningRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
       const modeIcon = getTransitModeIcon(t.mode);
       const durStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/45 border-amber-300 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 flex justify-between items-center flex-wrap gap-2';
@@ -854,8 +931,11 @@ function renderPlanningUI() {
 
   let transitBps = [];
   let activeTransitId = '';
+  let isCurrentDayRoad = true;
   if (dayRoute.transits && dayRoute.transits.length > 0) {
-    activeTransitId = dayRoute.transits[0].id;
+    const tObj = dayRoute.transits[0];
+    activeTransitId = tObj.id;
+    isCurrentDayRoad = isRoadTransitMode(tObj.mode, tObj.isNightTransit);
     transitBps = appState.bonsPlans.filter(bp => bp.target === activeTransitId);
   }
 
@@ -902,9 +982,9 @@ function renderPlanningUI() {
         const transitSegDist = dayRoute.segmentsDistances[tIdx] !== undefined ? dayRoute.segmentsDistances[tIdx] : 0;
         const parentSpot = ts.parentId ? appState.spots.find(p => p.id === ts.parentId) : null;
         
-        const transitRouteInfo = activeTransitId ? getEffectiveDistanceAndDuration(activeTransitId, dayRoute.totalDist) : { isOsrm: false, durationMin: null };
+        const transitRouteInfo = (activeTransitId && isCurrentDayRoad) ? getEffectiveDistanceAndDuration(activeTransitId, dayRoute.totalDist) : { isOsrm: false, durationMin: null };
         let transitSegDisplay = `+${transitSegDist.toFixed(1)} km`;
-        if (transitRouteInfo.isOsrm && transitRouteInfo.durationMin && dayRoute.totalDist > 0) {
+        if (isCurrentDayRoad && transitRouteInfo.isOsrm && transitRouteInfo.durationMin && dayRoute.totalDist > 0) {
           const ratio = transitSegDist / dayRoute.totalDist;
           const segmentMin = transitRouteInfo.durationMin * ratio;
           const durFormatted = formatDuration(segmentMin);
@@ -950,9 +1030,9 @@ function renderPlanningUI() {
       const segDist = dayRoute.segmentsDistances[offsetIndex] !== undefined ? dayRoute.segmentsDistances[offsetIndex] : 0;
       const parentSpot = spot.parentId ? appState.spots.find(p => p.id === spot.parentId) : null;
 
-      const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
+      const dayRouteInfo = isCurrentDayRoad ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist) : { isOsrm: false, durationMin: null };
       let segmentDisplay = `+${segDist.toFixed(1)} km`;
-      if (dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
+      if (isCurrentDayRoad && dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
         const ratio = segDist / dayRoute.totalDist;
         const segmentMin = dayRouteInfo.durationMin * ratio;
         const durFormatted = formatDuration(segmentMin);
@@ -1039,7 +1119,7 @@ function renderPlanningUI() {
     });
   }
 
-  const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist);
+  const dayRouteInfo = isCurrentDayRoad ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist) : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
   const dayDistEl = document.getElementById('dayRouteDistance');
   if (dayDistEl) {
     const durStr = dayRouteInfo.durationMin ? ` (~${formatDuration(dayRouteInfo.durationMin)})` : '';
@@ -1066,7 +1146,7 @@ function addSpotToCurrentDay() {
   const curDay = appState.currentSelectedDay;
   if (!appState.dailyItineraries[curDay]) appState.dailyItineraries[curDay] = [];
   if (!appState.dailyItineraries[curDay].includes(spotId)) appState.dailyItineraries[curDay].push(spotId);
-  renderApp();
+    renderApp();
 }
 
 function addBonPlanToCurrentDay() {
@@ -1077,7 +1157,7 @@ function addBonPlanToCurrentDay() {
   const curDay = appState.currentSelectedDay;
   if (!appState.dailyBonsPlans[curDay]) appState.dailyBonsPlans[curDay] = [];
   if (!appState.dailyBonsPlans[curDay].includes(bpId)) appState.dailyBonsPlans[curDay].push(bpId);
-  renderApp();
+    renderApp();
 }
 
 function moveSpotInDay(day, idx, direction) {
@@ -1088,7 +1168,7 @@ function moveSpotInDay(day, idx, direction) {
     const temp = list[idx];
     list[idx] = list[targetIdx];
     list[targetIdx] = temp;
-    renderApp();
+        renderApp();
   }
 }
 
@@ -1100,21 +1180,21 @@ function moveTransitSpot(transitId, idx, direction) {
     const temp = list[idx];
     list[idx] = list[targetIdx];
     list[targetIdx] = temp;
-    renderApp();
+        renderApp();
   }
 }
 
 function removeSpotFromDay(day, idx) {
   if (appState.dailyItineraries[day]) {
     appState.dailyItineraries[day].splice(idx, 1);
-    renderApp();
+        renderApp();
   }
 }
 
 function removeBonPlanFromDay(day, idx) {
   if (appState.dailyBonsPlans[day]) {
     appState.dailyBonsPlans[day].splice(idx, 1);
-    renderApp();
+        renderApp();
   }
 }
 
@@ -1387,6 +1467,9 @@ async function enrichTripWithOsrmRoutes() {
   
   const transits = getTransits();
   for (const t of transits) {
+    // Si c'est un transit en train, avion, bateau ou de nuit, on ne cherche pas de route OSRM routière
+    if (!isRoadTransitMode(t.mode, t.isNightTransit)) continue;
+
     const tCalc = calculateTransitDistances(t);
     const points = [];
     if (tCalc.originPoint) points.push(tCalc.originPoint);
@@ -1402,6 +1485,11 @@ async function enrichTripWithOsrmRoutes() {
   }
 
   for (let d = 0; d < totalDays; d++) {
+    const transitsForDay = transits.filter(t => t.day === d);
+    const dayTransit = transitsForDay.length > 0 ? transitsForDay[0] : null;
+    // Si la journée est sous un mode de transport non routier (avion, train, bateau...), on ignore OSRM
+    if (dayTransit && !isRoadTransitMode(dayTransit.mode, dayTransit.isNightTransit)) continue;
+
     const dayRoute = calculateDayRoute(d);
     let points = [];
     if (dayRoute.originPoint) points.push(dayRoute.originPoint);
@@ -1507,7 +1595,11 @@ async function generateRoadbookContent() {
     const currentZone = appState.zones.find(z => { const comp = computedDates[z.id]; return comp && day >= comp.checkinDay && day <= comp.checkoutDay; });
     const dayRoute = calculateDayRoute(day);
     const activeHotel = dayRoute.activeHotel;
-    const dayRouteInfo = getEffectiveDistanceAndDuration(`day_${day}`, dayRoute.totalDist);
+
+    const transitsForDay = getTransits().filter(t => t.day === day);
+    const activeTForDay = transitsForDay.length > 0 ? transitsForDay[0] : null;
+    const isDayRoad = activeTForDay ? isRoadTransitMode(activeTForDay.mode, activeTForDay.isNightTransit) : true;
+    const dayRouteInfo = isDayRoad ? getEffectiveDistanceAndDuration(`day_${day}`, dayRoute.totalDist) : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
 
     const daySpotsIds = appState.dailyItineraries[day] || [];
     const daySpots = daySpotsIds.map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
@@ -1541,7 +1633,8 @@ async function generateRoadbookContent() {
     if (dayRoute.transits && dayRoute.transits.length > 0) {
       const t = dayRoute.transits[0];
       const tCalc = calculateTransitDistances(t);
-      const tRouteInfo = getEffectiveDistanceAndDuration(t.id, tCalc.totalDist);
+      const isTRoad = isRoadTransitMode(t.mode, t.isNightTransit);
+      const tRouteInfo = isTRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
       const modeIcon = getTransitModeIcon(t.mode);
       const tDurStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
       html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>.</div><span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span></div>`;
@@ -1563,7 +1656,7 @@ async function generateRoadbookContent() {
         const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
 
         let segDisplay = `+${segDist.toFixed(1)} km`;
-        if (dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
+        if (isDayRoad && dayRouteInfo.isOsrm && dayRouteInfo.durationMin && dayRoute.totalDist > 0) {
           const ratio = segDist / dayRoute.totalDist;
           const segmentMin = dayRouteInfo.durationMin * ratio;
           const durFormatted = formatDuration(segmentMin);
@@ -1614,6 +1707,9 @@ async function generateRoadbookContent() {
   } else {
     if (appState.spots.length > 0) {
       html += `<div class="avoid-break space-y-3"><h3 class="text-lg font-bold text-slate-800 border-l-4 border-emerald-500 pl-2">Tous les Spots</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">`;
+      appState.spots.files && appState.spots.forEach(s => {
+        // ...
+      });
       appState.spots.forEach(s => {
         const parentSpot = s.parentId ? appState.spots.find(p => p.id === s.parentId) : null;
         html += `
