@@ -67,66 +67,78 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <!-- Bouton bascule Mode Sombre / Mode Clair -->
-        <button id="themeToggleBtn" onclick="toggleTheme()" class="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 p-2 rounded-xl text-xs font-semibold transition flex items-center justify-center w-9 h-9" title="Basculer le thème (Clair / Sombre)">
+        <!-- Bouton Thème -->
+        <button id="themeToggleBtn" onclick="toggleTheme()" class="h-9 w-9 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition flex items-center justify-center shrink-0" title="Basculer le thème (Clair / Sombre)">
           <i id="themeToggleIcon" class="fa-solid fa-moon text-indigo-400"></i>
         </button>
 
-        <div class="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 p-1 rounded-xl flex items-center text-xs font-semibold">
-          <button id="modeBtnDesigner" onclick="switchViewMode('designer')" class="px-3 py-1.5 rounded-lg transition bg-indigo-600 text-white">
-            <i class="fa-solid fa-laptop mr-1"></i> Concepteur
+        <!-- Bascule Concepteur / Voyageur -->
+        <div class="h-9 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 p-1 rounded-xl flex items-center text-xs font-semibold shrink-0">
+          <button id="modeBtnDesigner" onclick="switchViewMode('designer')" class="h-full px-3 rounded-lg transition bg-indigo-600 text-white flex items-center justify-center">
+            <i class="fa-solid fa-laptop mr-1.5"></i> Concepteur
           </button>
-          <button id="modeBtnTraveler" onclick="switchViewMode('traveler')" class="px-3 py-1.5 rounded-lg transition text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
-            <i class="fa-solid fa-mobile-screen mr-1"></i> Voyageur
+          <button id="modeBtnTraveler" onclick="switchViewMode('traveler')" class="h-full px-3 rounded-lg transition text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center">
+            <i class="fa-solid fa-mobile-screen mr-1.5"></i> Voyageur
           </button>
         </div>
 
-        <div class="flex items-center space-x-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-3 py-2 rounded-xl text-xs designer-only">
+        <!-- J0 Date -->
+        <div class="h-9 flex items-center space-x-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-3 rounded-xl text-xs designer-only shrink-0">
           <span class="text-slate-500 dark:text-slate-400 font-medium">J0 :</span>
           <input type="date" id="pivotDateInput" class="bg-transparent text-slate-800 dark:text-white font-semibold focus:outline-none">
         </div>
 
-        <div class="flex items-center space-x-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-3 py-2 rounded-xl text-xs">
+        <!-- Durée Total -->
+        <div class="h-9 flex items-center space-x-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-3 rounded-xl text-xs shrink-0">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Durée :</span>
           <span id="totalDaysBadge" class="text-emerald-600 dark:text-emerald-400 font-bold font-mono">0 jours</span>
         </div>
 
-        <button onclick="resetTrip()" class="bg-red-500/10 hover:bg-red-500/20 dark:bg-red-600/20 dark:hover:bg-red-600/30 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center designer-only" title="Recommencer">
+        <!-- Nouveau -->
+        <button onclick="resetTrip()" class="h-9 bg-red-500/10 hover:bg-red-500/20 dark:bg-red-600/20 dark:hover:bg-red-600/30 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/30 px-3.5 rounded-xl text-xs font-semibold transition flex items-center designer-only shrink-0" title="Recommencer">
           <i class="fa-solid fa-rotate-left mr-1.5"></i> Nouveau
         </button>
 
-        <button onclick="openClusteringModal()" class="bg-indigo-50 dark:bg-indigo-600/25 hover:bg-indigo-100 dark:hover:bg-indigo-600/35 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center designer-only">
+        <!-- Clustering -->
+        <button onclick="openClusteringModal()" class="h-9 bg-indigo-50 dark:bg-indigo-600/25 hover:bg-indigo-100 dark:hover:bg-indigo-600/35 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 px-3.5 rounded-xl text-xs font-semibold transition flex items-center designer-only shrink-0">
           <i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> Clustering
         </button>
 
-        <button onclick="openCoherenceModal()" class="relative bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center designer-only">
+        <!-- Alertes -->
+        <button onclick="openCoherenceModal()" class="h-9 relative bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 px-3.5 rounded-xl text-xs font-semibold transition flex items-center designer-only shrink-0">
           <i class="fa-solid fa-triangle-exclamation mr-1.5 text-amber-500 dark:text-amber-400"></i> Alertes
           <span id="alertBadge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">0</span>
         </button>
 
-        <button onclick="openHelpModal()" class="bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 p-2 rounded-xl text-xs font-semibold transition flex items-center justify-center w-9 h-9" title="Mode d'emploi & Aide">
+        <!-- Aide -->
+        <button onclick="openHelpModal()" class="h-9 w-9 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs font-semibold transition flex items-center justify-center shrink-0" title="Mode d'emploi & Aide">
           <i class="fa-solid fa-circle-question text-base"></i>
         </button>
 
-        <button id="recalculateOsrmBtn" class="bg-indigo-50 dark:bg-indigo-600/25 hover:bg-indigo-100 dark:hover:bg-indigo-600/35 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center designer-only" title="Recalculer les durées OSRM">
-            <i class="fa-solid fa-stopwatch mr-1.5 text-indigo-500 dark:text-indigo-400"></i>
+        <!-- Recalculer OSRM -->
+        <button id="recalculateOsrmBtn" class="h-9 w-9 bg-indigo-50 dark:bg-indigo-600/25 hover:bg-indigo-100 dark:hover:bg-indigo-600/35 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 rounded-xl text-xs font-semibold transition flex items-center justify-center designer-only shrink-0" title="Recalculer les durées OSRM">
+          <i class="fa-solid fa-stopwatch text-base text-indigo-500 dark:text-indigo-400"></i>
         </button>
 
-        <button id="openPrintRoadbookBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center shadow-md designer-only">
+        <!-- PDF -->
+        <button id="openPrintRoadbookBtn" class="h-9 bg-emerald-600 hover:bg-emerald-700 text-white border border-transparent px-3.5 rounded-xl text-xs font-semibold transition flex items-center shadow-md designer-only shrink-0">
           <i class="fas fa-print mr-1.5"></i> PDF
         </button>
 
-        <div class="h-5 w-[1px] bg-slate-300 dark:bg-slate-800 mx-1 designer-only"></div>
+        <!-- Séparateur -->
+        <div class="h-5 w-[1px] bg-slate-300 dark:bg-slate-800 mx-1 designer-only shrink-0"></div>
 
-        <button onclick="exportZIP()" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl text-xs font-medium transition flex items-center designer-only">
+        <!-- Export -->
+        <button onclick="exportZIP()" class="h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 px-3.5 rounded-xl text-xs font-medium transition flex items-center designer-only shrink-0">
           <i class="fas fa-file-export mr-1.5 text-indigo-500 dark:text-indigo-400"></i> Export .pvi
         </button>
 
-        <label class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl text-xs font-medium transition cursor-pointer flex items-center designer-only">
+        <!-- Import -->
+        <label class="h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 px-3.5 rounded-xl text-xs font-medium transition cursor-pointer flex items-center designer-only shrink-0">
           <i class="fas fa-file-import mr-1.5 text-indigo-500 dark:text-indigo-400"></i> Import .pvi
           <input type="file" id="importZipInput" onchange="importZIP(event)" accept=".pvi,.zip,.json" class="hidden">
         </label>
-      </div>
+      </div>  
     </div>
   </header>
 
