@@ -716,14 +716,25 @@ function saveTransit(event) {
   const isNightTransit = document.getElementById('transitIsNightTransit').checked;
   const nightCount = parseInt(document.getElementById('transitNightCount').value) || 1;
 
-  if (!appState.transitsCustom) appState.transitsCustom = {};
-  appState.transitsCustom[id] = { name, mode, desc, isNightTransit, nightCount };
+  if (!Array.isArray(appState.customTransits)) {
+    appState.customTransits = Object.values(appState.customTransits || {});
+  }
+
+  let existingIndex = appState.customTransits.findIndex(ct => ct.id === id);
+  const transitData = { id, name, mode, desc, isNightTransit, nightCount };
+
+  if (existingIndex >= 0) {
+    appState.customTransits[existingIndex] = { ...appState.customTransits[existingIndex], ...transitData };
+  } else {
+    appState.customTransits.push(transitData);
+  }
 
   // ➔ Invalidation du cache OSRM (le mode de transport ou la durée impacte les calculs)
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
+  saveToLocalStorage();
   closeModal('transitModal');
   renderApp();
 }
@@ -1291,7 +1302,14 @@ async function importZIP(event) {
     }
 
     appState.name = importedState.name || 'Mon Voyage';
+    
+    // Restauration de la pivotDate (J0) avec mise à jour de l'input HTML si présent
     appState.pivotDate = importedState.pivotDate || new Date().toISOString().split('T')[0];
+    const pivotInput = document.getElementById('pivotDateInput');
+    if (pivotInput) {
+      pivotInput.value = appState.pivotDate;
+    }
+
     appState.zones = importedState.zones || [];
     appState.hotels = importedState.hotels || [];
     appState.spots = importedState.spots || [];
@@ -1300,11 +1318,11 @@ async function importZIP(event) {
     appState.dailyBonsPlans = importedState.dailyBonsPlans || {};
     appState.departurePoint = importedState.departurePoint || { name: 'Départ Initial', lat: 48.8566, lng: 2.3522 };
     appState.arrivalPoint = importedState.arrivalPoint || { name: 'Arrivée Finale', lat: 48.8566, lng: 2.3522 };
-    appState.transitsCustom = importedState.transitsCustom || {};
+    appState.customTransits = importedState.customTransits || [];
     appState.transitSpotOrder = importedState.transitSpotOrder || {};
     appState.routeCache = {};
     appState.isCacheStale = true;
-    shouldFitBoundsOnce = true;
+    shouldFitBoundsOnce = true; // ➔ Force le centrage de la carte sur les POI importés
 
     // ➔ Invalidation du cache OSRM lors de l'import complet
     if (typeof invalidateRouteCache === 'function') {

@@ -1,3 +1,8 @@
+/* ==========================================================================
+   GeoVoyage - Gestion de l'Interface Utilisateur (ui.js)
+   Version complète avec prise en charge des transits de nuit (isNightTransit)
+   ========================================================================== */
+
 /**
  * Purge le cache des itinéraires OSRM et relance le calcul manuellement sur action de l'utilisateur
  */
@@ -533,7 +538,7 @@ function renderStructureUI() {
     <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
       <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})">(${idx + 1}) ${bp.title}</span>
       <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
         <button onclick="editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
         <button onclick="unassignBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
       </div>
@@ -547,20 +552,27 @@ function renderStructureUI() {
         <p class="text-xs text-slate-500 dark:text-slate-400 font-mono">${appState.departurePoint.lat.toFixed(3)}, ${appState.departurePoint.lng.toFixed(3)}</p>
       </div>
       <div class="flex items-center space-x-1">
-        <button onclick="centerMapOnCoords(${appState.departurePoint.lat}, ${appState.departurePoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+        <button onclick="centerMapOnCoords(${appState.departurePoint.lat}, ${appState.departurePoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
         <button onclick="openEndpointModal('departure')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
       </div>
     </div>
     ${depTransit ? `
       <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
         <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
-          <span>${getTransitModeIcon(depTransit.mode)} ${depTransit.name} (${depTransit.mode || 'Voiture'})</span>
+          <div class="flex items-center gap-2">
+            <span>${getTransitModeIcon(depTransit.mode)} ${depTransit.name} (${depTransit.mode || 'Voiture'})</span>
+            <label class="flex items-center gap-1 text-[11px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 cursor-pointer">
+              <input type="checkbox" ${depTransit.isNightTransit ? 'checked' : ''} onchange="toggleTransitNight('${depTransit.id}', this.checked)" class="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
+              <span>Transport de nuit</span>
+            </label>
+          </div>
           <span class="text-emerald-600 dark:text-emerald-400 font-mono">
             ${depRouteInfo && depRouteInfo.isOsrm 
               ? `🚗 ${depRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(depRouteInfo.durationMin)})` 
               : `${depTransitCalc ? depTransitCalc.totalDist.toFixed(1) : 0} km`}
           </span>
         </div>
+        ${depTransit.isNightTransit ? '<div class="text-[11px] text-amber-300 bg-amber-500/10 p-1.5 rounded"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord active (remplace l\'hôtel)</div>' : ''}
         ${depTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${depTransitSpotsHtml}</div>` : ''}
         ${depTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${depTransitBpsHtml}</div>` : ''}
         <div class="text-right pt-1">
@@ -597,7 +609,7 @@ function renderStructureUI() {
       <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
         <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})">(${idx + 1}) ${item.spot.name}</span>
         <div class="flex items-center space-x-1 shrink-0">
-          <button onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+          <button onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
           <button onclick="editSpot('${item.spot.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
           <button onclick="detachSpotFromDay(${item.day}, '${item.spot.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
         </div>
@@ -608,7 +620,7 @@ function renderStructureUI() {
       <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
         <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})">(${idx + 1}) ${item.bonPlan.title}</span>
         <div class="flex items-center space-x-1 shrink-0">
-          <button onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+          <button onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
           <button onclick="editBonPlan('${item.bonPlan.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
           <button onclick="detachBonPlanFromDay(${item.day}, '${item.bonPlan.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
         </div>
@@ -665,7 +677,7 @@ function renderStructureUI() {
               ${h.desc ? `<span class="text-slate-600 dark:text-slate-300 block italic truncate mt-0.5 text-[11px]">${h.desc}</span>` : ''}
             </div>
             <div class="flex items-center space-x-1 shrink-0 ml-2">
-              <button onclick="centerMapOnCoords(${h.lat}, ${h.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+              <button onclick="centerMapOnCoords(${h.lat}, ${h.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
               <button onclick="editHotel('${h.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
               <button onclick="deleteHotel('${h.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded transition" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
             </div>
@@ -687,13 +699,20 @@ function renderStructureUI() {
       html += `
         <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
           <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
-            <span>${getTransitModeIcon(nextTransit.mode)} ${nextTransit.name} (${nextTransit.mode || 'Voiture'})</span>
+            <div class="flex items-center gap-2">
+              <span>${getTransitModeIcon(nextTransit.mode)} ${nextTransit.name} (${nextTransit.mode || 'Voiture'})</span>
+              <label class="flex items-center gap-1 text-[11px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 cursor-pointer">
+                <input type="checkbox" ${nextTransit.isNightTransit ? 'checked' : ''} onchange="toggleTransitNight('${nextTransit.id}', this.checked)" class="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
+                <span>Transport de nuit</span>
+              </label>
+            </div>
             <span class="text-emerald-600 dark:text-emerald-400 font-mono">
               ${nextRouteInfo && nextRouteInfo.isOsrm 
                 ? `🚗 ${nextRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(nextRouteInfo.durationMin)})` 
                 : `${nextTransitCalc ? nextTransitCalc.totalDist.toFixed(1) : 0} km`}
             </span>
           </div>
+          ${nextTransit.isNightTransit ? '<div class="text-[11px] text-amber-300 bg-amber-500/10 p-1.5 rounded"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord active (remplace l\'hôtel)</div>' : ''}
           ${nextTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots en transit :</span>${nextTransitSpots.map((s, sIdx) => `<div class="flex items-center justify-between py-0.5 px-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800"><span class="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${sIdx + 1}) ${s.name}</span><div class="flex space-x-1"><button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="text-emerald-600 dark:text-emerald-400 p-1" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button><button onclick="editSpot('${s.id}')" class="text-indigo-600 dark:text-indigo-400 p-1"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`).join('')}</div>` : ''}
           <div class="text-right pt-1">
             <button onclick="editTransitModal('${nextTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
@@ -721,7 +740,7 @@ function renderStructureUI() {
     <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
       <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${idx + 1}) ${s.name}</span>
       <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
         <button onclick="editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
         <button onclick="unassignSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
       </div>
@@ -732,7 +751,7 @@ function renderStructureUI() {
     <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
       <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})">(${idx + 1}) ${bp.title}</span>
       <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
         <button onclick="editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
         <button onclick="unassignBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
       </div>
@@ -746,20 +765,27 @@ function renderStructureUI() {
         <p class="text-xs text-slate-500 dark:text-slate-400 font-mono">${appState.arrivalPoint.lat.toFixed(3)}, ${appState.arrivalPoint.lng.toFixed(3)}</p>
       </div>
       <div class="flex items-center space-x-1">
-        <button onclick="centerMapOnCoords(${appState.arrivalPoint.lat}, ${appState.arrivalPoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+        <button onclick="centerMapOnCoords(${appState.arrivalPoint.lat}, ${appState.arrivalPoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
         <button onclick="openEndpointModal('arrival')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
       </div>
     </div>
     ${arrTransit ? `
       <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
         <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
-          <span>${getTransitModeIcon(arrTransit.mode)} ${arrTransit.name} (${arrTransit.mode || 'Voiture'})</span>
+          <div class="flex items-center gap-2">
+            <span>${getTransitModeIcon(arrTransit.mode)} ${arrTransit.name} (${arrTransit.mode || 'Voiture'})</span>
+            <label class="flex items-center gap-1 text-[11px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 cursor-pointer">
+              <input type="checkbox" ${arrTransit.isNightTransit ? 'checked' : ''} onchange="toggleTransitNight('${arrTransit.id}', this.checked)" class="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
+              <span>Transport de nuit</span>
+            </label>
+          </div>
           <span class="text-emerald-600 dark:text-emerald-400 font-mono">
             ${arrRouteInfo && arrRouteInfo.isOsrm 
               ? `🚗 ${arrRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(arrRouteInfo.durationMin)})` 
               : `${arrTransitCalc ? arrTransitCalc.totalDist.toFixed(1) : 0} km`}
           </span>
         </div>
+        ${arrTransit.isNightTransit ? '<div class="text-[11px] text-amber-300 bg-amber-500/10 p-1.5 rounded"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord active (remplace l\'hôtel)</div>' : ''}
         ${arrTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${arrTransitSpotsHtml}</div>` : ''}
         ${arrTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${arrTransitBpsHtml}</div>` : ''}
         <div class="text-right pt-1">
@@ -814,7 +840,7 @@ function renderPlanningUI() {
       const modeIcon = getTransitModeIcon(t.mode);
       const durStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/45 border-amber-300 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 flex justify-between items-center flex-wrap gap-2';
-      banner.innerHTML = `<div><span class="mr-2 text-base">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em> • Distance transit : <span class="text-emerald-600 dark:text-emerald-400 font-mono font-bold">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${durStr}` : `${tCalc.totalDist.toFixed(1)} km`}</span>.</div><button onclick="editTransitModal('${t.id}')" class="bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-950 dark:text-white px-2.5 py-1 rounded-lg text-xs font-semibold"><i class="fa-solid fa-gear mr-1"></i>Configurer</button>`;
+      banner.innerHTML = `<div><span class="mr-2 text-base">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em> • Distance transit : <span class="text-emerald-600 dark:text-emerald-400 font-mono font-bold">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${durStr}` : `${tCalc.totalDist.toFixed(1)} km`}</span>${t.isNightTransit ? ' • <span class="text-amber-400 font-bold">🛌 Nuit à bord</span>' : ''}.</div><button onclick="editTransitModal('${t.id}')" class="bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-950 dark:text-white px-2.5 py-1 rounded-lg text-xs font-semibold"><i class="fa-solid fa-gear mr-1"></i>Configurer</button>`;
     } else if (currentZone) {
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-200 flex justify-between items-center flex-wrap gap-2';
       banner.innerHTML = `<div><i class="fa-solid fa-map-pin text-indigo-600 dark:text-indigo-400 mr-2"></i>Secteur actif : <strong>${currentZone.name}</strong></div>${activeHotel ? `<span class="text-xs bg-indigo-100 dark:bg-indigo-900 px-2.5 py-1 rounded-lg text-indigo-700 dark:text-indigo-300 cursor-pointer hover:underline" onclick="centerMapOnCoords(${activeHotel.lat}, ${activeHotel.lng})"><i class="fa-solid fa-hotel mr-1"></i>${activeHotel.name}</span>` : ''}`;
@@ -927,7 +953,7 @@ function renderPlanningUI() {
               <button onclick="editSpot('${ts.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition" title="Modifier"><i class="fa-solid fa-pen-to-square"></i></button>
               <button onclick="moveTransitSpot('${activeTransitId}', ${tIdx}, -1)" class="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white transition" title="Monter"><i class="fa-solid fa-arrow-up text-xs"></i></button>
               <button onclick="moveTransitSpot('${activeTransitId}', ${tIdx}, 1)" class="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white transition" title="Descendre"><i class="fa-solid fa-arrow-down text-xs"></i></button>
-              <button onclick="unassignSpot('${ts.id}')" class="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+              <button onclick="unassignSpot('${ts.id}')" class="p-1.5 text-amber-600 dark:text-amber-400 transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
             </div>
           </div>
           ${ts.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300 pl-8">${ts.desc}</p>` : ''}
@@ -979,7 +1005,7 @@ function renderPlanningUI() {
         ${spot.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300 pl-8">${spot.desc}</p>` : ''}
         ${spot.url ? `<div class="pl-8 pt-0.5"><a href="${spot.url}" target="_blank" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center"><i class="fa-solid fa-link mr-1"></i><span class="truncate">${spot.url}</span></a></div>` : ''}
         <div class="text-xs text-emerald-600 dark:text-emerald-400 font-mono pl-8 pt-0.5">➔ Distance : ${segmentDisplay}</div>
-        ${spot.imageBase64 ? `<div class="pl-8 pt-1.5"><img src="${spot.imageBase64}" class="w-28 h-20 object-cover rounded-xl border border-slate-200 dark:border-slate-700"></div>` : ''}
+        ${spot.imageBase64 ? `<div class="pl-8 pt-1.5"><img src="${spot.imageBase64}" class="w-28 h-20 object-cover rounded-xl border border-slate-300 dark:border-slate-700"></div>` : ''}
       `;
       routeContainer.appendChild(item);
     });
@@ -1523,7 +1549,7 @@ async function generateRoadbookContent() {
       const tRouteInfo = isTRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
       const modeIcon = getTransitModeIcon(t.mode);
       const tDurStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
-      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>.</div><span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span></div>`;
+      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>${t.isNightTransit ? ' • <strong>🛌 Nuit à bord</strong>' : ''}.</div><span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span></div>`;
     }
 
     if (activeHotel) {
@@ -1632,13 +1658,11 @@ async function generateRoadbookContent() {
 }
 
 function locateAndHighlightItem(type, id) {
-  // Fermer la popup active sur la carte
   if (map) map.closePopup();
 
   let targetDay = null;
 
   if (type === 'spot') {
-    // Vérifier si le spot est assigné à une journée
     Object.keys(appState.dailyItineraries).forEach(d => {
       if (appState.dailyItineraries[d] && appState.dailyItineraries[d].includes(id)) {
         targetDay = parseInt(d);
@@ -1646,11 +1670,9 @@ function locateAndHighlightItem(type, id) {
     });
 
     if (targetDay !== null) {
-      // S'il est associé à un jour, basculer sur l'onglet Planning
       appState.currentSelectedDay = targetDay;
       switchLeftTab('planning');
     } else {
-      // Sinon, basculer sur l'onglet Tous les Spots / Structure
       switchLeftTab('allspots');
     }
   } else if (type === 'bonplan') {
@@ -1667,11 +1689,9 @@ function locateAndHighlightItem(type, id) {
       switchLeftTab('allspots');
     }
   } else {
-    // Pour les hôtels ou départ/arrivée, on bascule sur la structure
     switchLeftTab('structure');
   }
 
-  // Laisser le DOM se rafraîchir puis cibler et faire clignoter l'élément dans la liste
   setTimeout(() => {
     let cardId = '';
     if (type === 'spot') cardId = `card-spot-${id}`;
@@ -1688,4 +1708,17 @@ function locateAndHighlightItem(type, id) {
       }, 2000);
     }
   }, 100);
+}
+
+function toggleTransitNight(transitId, isNight) {
+  if (!appState.customTransits) appState.customTransits = [];
+  let customT = appState.customTransits.find(ct => ct.id === transitId);
+  if (!customT) {
+    customT = { id: transitId, isNightTransit: isNight, nightCount: 1 };
+    appState.customTransits.push(customT);
+  } else {
+    customT.isNightTransit = isNight;
+  }
+  invalidateRouteCache();
+  renderApp();
 }

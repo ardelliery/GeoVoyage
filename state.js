@@ -1,3 +1,8 @@
+/* ==========================================================================
+   GeoVoyage - État de l'Application et Logique Métier (state.js)
+   Version corrigée (Correction de la récursion infinie getTransits <-> getZoneComputedDates)
+   ========================================================================== */
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(err => {
@@ -82,7 +87,8 @@ function loadDemoData() {
     return;
   }
   appState.name = "Voyage Provence Démo";
-  document.getElementById('tripNameInput').value = appState.name;
+  const tripNameInput = document.getElementById('tripNameInput');
+  if (tripNameInput) tripNameInput.value = appState.name;
   appState.departurePoint = { name: "Ollainville", lat: 48.591, lng: 2.217 };
   appState.arrivalPoint = { name: "Zone Manosque (Arrivée)", lat: 43.8333, lng: 5.7833 };
   appState.pivotDate = "2025-11-22";
@@ -113,7 +119,8 @@ function loadDemoData() {
 function resetTrip() {
   if (!confirm("Voulez-vous vraiment effacer tout le voyage pour en planifier un nouveau ?")) return;
   appState.name = "Mon Voyage";
-  document.getElementById('tripNameInput').value = appState.name;
+  const tripNameInput = document.getElementById('tripNameInput');
+  if (tripNameInput) tripNameInput.value = appState.name;
   appState.zones = []; appState.hotels = []; appState.spots = []; appState.bonsPlans = []; appState.customTransits = [];
   appState.dailyItineraries = {}; appState.dailyBonsPlans = {}; appState.transitSpotOrder = {}; appState.currentSelectedDay = 0;
   shouldFitBoundsOnce = true;
@@ -190,32 +197,37 @@ function deltaToShortDateStr(deltaDays) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/* CORRECTION DE LA RÉCURSION : Utilisation directe de appState.customTransits 
+   au lieu d'appeler getTransits() à l'intérieur de getZoneComputedDates() */
 function getZoneComputedDates() {
   let currentDay = 0;
-  
-  const depTransitId = 'transit_dep_first';
-  const customDepT = (appState.customTransits || []).find(ct => ct.id === depTransitId);
-  if (customDepT && customDepT.isNightTransit) {
-    currentDay += (parseInt(customDepT.nightCount) || 1);
-  }
-
   let mapping = {};
+  
+  const customTransitsList = Array.isArray(appState.customTransits) 
+    ? appState.customTransits 
+    : Object.values(appState.customTransits || {});
+
   appState.zones.forEach((zone, index) => {
     const hotel = appState.hotels.find(h => h.zoneId === zone.id);
-    const nights = hotel ? (parseInt(hotel.nights) || 1) : 1;
+    let nights = hotel ? (parseInt(hotel.nights) || 1) : 1;
+
+    // Déduction automatique des nuits si un transit de nuit précède ou touche cette zone
+    customTransitsList.forEach(t => {
+      if (t.isNightTransit && t.nightCount) {
+        if (index === 0 && t.id === 'transit_dep_first') {
+          nights = Math.max(0, nights - t.nightCount);
+        }
+        if (index > 0 && t.id === `transit_${appState.zones[index - 1].id}_${zone.id}`) {
+          nights = Math.max(0, nights - t.nightCount);
+        }
+      }
+    });
+
     const checkinDay = currentDay;
     const checkoutDay = currentDay + nights;
     mapping[zone.id] = { checkinDay, checkoutDay, nights };
     
     currentDay = checkoutDay;
-    if (index < appState.zones.length - 1) {
-      const nextZone = appState.zones[index + 1];
-      const transitId = `transit_${zone.id}_${nextZone.id}`;
-      const customT = (appState.customTransits || []).find(ct => ct.id === transitId);
-      if (customT && customT.isNightTransit) {
-        currentDay += (parseInt(customT.nightCount) || 1);
-      }
-    }
   });
   return mapping;
 }
@@ -234,10 +246,14 @@ function getTransits() {
   const transits = [];
   if (appState.zones.length === 0) return transits;
 
+  const customTransitsList = Array.isArray(appState.customTransits) 
+    ? appState.customTransits 
+    : Object.values(appState.customTransits || {});
+
   const firstZone = appState.zones[0];
   const depTransitId = 'transit_dep_first';
   let depTransitObj = { id: depTransitId, name: `Transit Départ ➔ ${firstZone.name}`, day: 0, mode: 'Voiture', fromType: 'dep', toType: 'zone', toZone: firstZone, isNightTransit: false, nightCount: 1, desc: '' };
-  const customDep = (appState.customTransits || []).find(ct => ct.id === depTransitId);
+  const customDep = customTransitsList.find(ct => ct.id === depTransitId);
   if (customDep) { depTransitObj = { ...depTransitObj, ...customDep }; }
   transits.push(depTransitObj);
 
@@ -247,12 +263,12 @@ function getTransits() {
     const compFrom = computed[from.id];
     const transitId = `transit_${from.id}_${to.id}`;
     let transitObj = { id: transitId, name: `Transit : ${from.name} ➔ ${to.name}`, day: compFrom ? compFrom.checkoutDay : 0, mode: 'Voiture', from, to, isNightTransit: false, nightCount: 1, desc: '' };
-    const customT = (appState.customTransits || []).find(ct => ct.id === transitId);
+    const customT = customTransitsList.find(ct => ct.id === transitId);
     if (customT) { transitObj = { ...transitObj, ...customT }; }
     transits.push(transitObj);
   }
 
-  (appState.customTransits || []).forEach(ct => {
+  customTransitsList.forEach(ct => {
     if (!transits.some(t => t.id === ct.id)) {
       transits.push(ct);
     }
@@ -262,7 +278,7 @@ function getTransits() {
   const compLast = computed[lastZone.id];
   const arrTransitId = 'transit_last_arr';
   let arrTransitObj = { id: arrTransitId, name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: compLast ? compLast.checkoutDay : 0, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr', isNightTransit: false, nightCount: 1, desc: '' };
-  const customArr = (appState.customTransits || []).find(ct => ct.id === arrTransitId);
+  const customArr = customTransitsList.find(ct => ct.id === arrTransitId);
   if (customArr) { arrTransitObj = { ...arrTransitObj, ...customArr }; }
   transits.push(arrTransitObj);
 
@@ -271,6 +287,14 @@ function getTransits() {
 
 function getDayContextDescription(curDay) {
   const computed = getZoneComputedDates();
+  
+  const transits = getTransits().filter(t => t.day === curDay);
+  const activeTransit = transits.length > 0 ? transits[0] : null;
+  
+  if (activeTransit && activeTransit.isNightTransit) {
+    return `🛌 Transport de nuit (${activeTransit.name}) - Pas d'hôtel requis`;
+  }
+
   const currentZone = appState.zones.find(z => {
     const comp = computed[z.id];
     return comp && curDay >= comp.checkinDay && curDay <= comp.checkoutDay;
@@ -280,7 +304,7 @@ function getDayContextDescription(curDay) {
     const comp = computed[h.zoneId];
     return comp && curDay >= comp.checkinDay && curDay < comp.checkoutDay;
   });
-  const hotelStr = activeHotel ? ` / Hôtel : ${activeHotel.name}` : '';
+  const hotelStr = activeHotel ? ` / Hôtel : ${activeHotel.name}` : ' / ⚠️ Nuit en transit ou pas d\'hôtel';
   return `Secteur : ${currentZone.name}${hotelStr}`;
 }
 
@@ -397,8 +421,6 @@ function cleanOrphanTransitsAndTargets() {
   appState.bonsPlans.forEach(bp => { if (bp.target && !validTransits.includes(bp.target)) bp.target = ''; });
 }
 
-// --- Module OSRM (Calcul d'itinéraire réel par la route) ---
-
 function getOsrmProfile(mode) {
   if (mode === 'Vélo') return 'bicycle';
   return 'car';
@@ -457,9 +479,6 @@ function updateRecalculateButtonState() {
   btn.classList.remove('opacity-50', 'cursor-not-allowed');
 }
 
-/**
- * PURGE GLOBALE DU CACHE OSRM DU VOYAGE
- */
 function invalidateRouteCache() {
   appState.routeCache = {};
   appState.isCacheStale = true;
@@ -489,14 +508,10 @@ function getEffectiveDistanceAndDuration(cacheKey, fallbackDistanceKm) {
   };
 }
 
-/**
- * Récupère le tronçon réel (leg) d'OSRM s'il existe, sinon effectue le repli Haversine / Prorata
- */
 function getSegmentOsrmData(cacheKey, segmentIndex, fallbackDistKm, totalDayFallbackDist) {
   if (appState.routeCache && appState.routeCache[cacheKey]) {
     const routeObj = appState.routeCache[cacheKey];
     
-    // 1. Tronçon réel (leg) exact renvoyé par OSRM
     if (routeObj && routeObj.legs && routeObj.legs[segmentIndex]) {
       const leg = routeObj.legs[segmentIndex];
       return {
@@ -506,7 +521,6 @@ function getSegmentOsrmData(cacheKey, segmentIndex, fallbackDistKm, totalDayFall
       };
     }
     
-    // 2. Prorata si les legs ne sont pas complets mais la route globale OSRM existe
     if (routeObj && routeObj.distanceKm && totalDayFallbackDist > 0) {
       const ratio = fallbackDistKm / totalDayFallbackDist;
       return {
@@ -517,7 +531,6 @@ function getSegmentOsrmData(cacheKey, segmentIndex, fallbackDistKm, totalDayFall
     }
   }
 
-  // 3. Repli Haversine strict (Vol d'oiseau)
   return {
     distanceKm: fallbackDistKm,
     durationMin: null,
