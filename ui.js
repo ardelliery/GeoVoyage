@@ -586,7 +586,7 @@ function renderStructureUI() {
   const computedDates = getZoneComputedDates();
 
   appState.zones.forEach((zone, index) => {
-    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0 };
+    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0, rawNights: 0, nightTransitConsumed: 0 };
     const checkinDate = deltaToDateStr(comp.checkinDay);
     const checkoutDate = deltaToDateStr(comp.checkoutDay);
     const zoneDist = calculateZoneTotalDistance(zone);
@@ -631,6 +631,10 @@ function renderStructureUI() {
     zoneEl.id = `card-zone-${zone.id}`;
     zoneEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3 shadow-sm';
     
+    const nightInfoStr = comp.nightTransitConsumed > 0
+      ? `${comp.nights} nuit(s) hôtel + ${comp.nightTransitConsumed} nuit(s) transport`
+      : `${comp.nights} nuit(s)`;
+
     let html = `
       <div class="border-b border-slate-200 dark:border-slate-800 pb-3" style="border-left: 4px solid ${zone.color}">
         <div class="pl-2 space-y-1">
@@ -645,7 +649,7 @@ function renderStructureUI() {
           </div>
           <div class="cursor-pointer hover:opacity-80 inline-block transition" onclick="jumpToDay(${comp.checkinDay})" title="Cliquer pour aller au premier jour J+${comp.checkinDay} dans le planning">
             <span class="text-xs text-indigo-600 dark:text-indigo-300 font-mono font-bold bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60 flex items-center w-fit">
-              <i class="fa-solid fa-calendar-days mr-1.5 text-indigo-500 dark:text-indigo-400"></i>J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${comp.nights} nuit(s)) <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
+              <i class="fa-solid fa-calendar-days mr-1.5 text-indigo-500 dark:text-indigo-400"></i>J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${nightInfoStr}) <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
             </span>
           </div>
           <div class="flex items-center space-x-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap pt-1">
@@ -663,17 +667,28 @@ function renderStructureUI() {
     `;
 
     if (zoneHotels.length === 0) {
-      html += `<div class="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
-        <span><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Aucun hébergement (0 nuit) !</span>
-        <button onclick="openHotelModal()" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">+ Hébergement</button>
-      </div>`;
+      if (comp.nightTransitConsumed > 0) {
+        html += `<div class="text-xs text-amber-800 dark:text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/30 flex items-center justify-between">
+          <span><i class="fa-solid fa-bed mr-1.5"></i> Nuit(s) couverte(s) par le transport de nuit (${comp.nightTransitConsumed} nuit(s)).</span>
+          <button onclick="openHotelModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">+ Hébergement</button>
+        </div>`;
+      } else {
+        html += `<div class="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
+          <span><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Aucun hébergement (0 nuit) !</span>
+          <button onclick="openHotelModal()" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">+ Hébergement</button>
+        </div>`;
+      }
     } else {
       zoneHotels.forEach(h => {
+        const effNights = Math.max(0, (parseInt(h.nights) || 0) - comp.nightTransitConsumed);
+        const nightsDisplay = comp.nightTransitConsumed > 0
+          ? `${effNights} nuit(s) effective(s) (${h.nights || 0} - ${comp.nightTransitConsumed} nuit transit)`
+          : `${h.nights || 0} nuit(s)`;
         html += `
           <div id="card-hotel-${h.id}" class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
             <div class="truncate cursor-pointer hover:opacity-80" onclick="centerMapOnCoords(${h.lat}, ${h.lng})">
               <span class="text-slate-900 dark:text-white font-semibold flex items-center"><i class="fa-solid fa-hotel text-blue-500 dark:text-blue-400 mr-1.5"></i>${h.name}</span>
-              <span class="text-slate-500 dark:text-slate-400 block truncate">${h.nights || 0} nuit(s) • Rayon : ${h.radiusKm || 50} km</span>
+              <span class="text-slate-500 dark:text-slate-400 block truncate">${nightsDisplay} • Rayon : ${h.radiusKm || 50} km</span>
               ${h.desc ? `<span class="text-slate-600 dark:text-slate-300 block italic truncate mt-0.5 text-[11px]">${h.desc}</span>` : ''}
             </div>
             <div class="flex items-center space-x-1 shrink-0 ml-2">
@@ -1300,30 +1315,33 @@ function renderAllSpotsUI() {
 
 function checkCoherence() {
   const alerts = [];
+  const computed = getZoneComputedDates();
   
   appState.zones.forEach(zone => {
     const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
+    const comp = computed[zone.id];
+    const isCoveredByNightTransit = comp && comp.nightTransitConsumed > 0;
+
     if (zoneHotels.length === 0) {
-      alerts.push({ type: 'danger', text: `⚠️ La zone "${zone.name}" n'a aucun hébergement rattaché.` });
-    } else {
-      const computed = getZoneComputedDates();
-      const comp = computed[zone.id];
-      if (comp) {
-        const hotel = zoneHotels[0];
-        const radius = hotel.radiusKm !== undefined ? hotel.radiusKm : 50;
-        
-        for (let d = comp.checkinDay; d < comp.checkoutDay; d++) {
-          const daySpots = (appState.dailyItineraries[d] || []).map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
-          daySpots.forEach(s => {
-            const dist = haversineDistanceKm(hotel.lat, hotel.lng, s.lat, s.lng);
-            if (dist > radius) {
-              alerts.push({ 
-                type: 'warning', 
-                text: `⚠️ Le spot "${s.name}" (Jour J+${d}) est situé à ${dist.toFixed(1)} km de l'hébergement "${hotel.name}" (supérieur au rayon de confort de ${radius} km).` 
-              });
-            }
-          });
-        }
+      if (!isCoveredByNightTransit) {
+        alerts.push({ type: 'danger', text: `⚠️ La zone "${zone.name}" n'a aucun hébergement rattaché.` });
+      }
+    } else if (comp) {
+      const hotel = zoneHotels[0];
+      const radius = hotel.radiusKm !== undefined ? hotel.radiusKm : 50;
+      const effectiveCheckout = comp.checkinDay + comp.nights;
+      
+      for (let d = comp.checkinDay; d < effectiveCheckout; d++) {
+        const daySpots = (appState.dailyItineraries[d] || []).map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
+        daySpots.forEach(s => {
+          const dist = haversineDistanceKm(hotel.lat, hotel.lng, s.lat, s.lng);
+          if (dist > radius) {
+            alerts.push({ 
+              type: 'warning', 
+              text: `⚠️ Le spot "${s.name}" (Jour J+${d}) est situé à ${dist.toFixed(1)} km de l'hébergement "${hotel.name}" (supérieur au rayon de confort de ${radius} km).` 
+            });
+          }
+        });
       }
     }
   });
@@ -1474,11 +1492,14 @@ async function generateRoadbookContent() {
   `;
 
   appState.zones.forEach(zone => {
-    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0 };
+    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0, nightTransitConsumed: 0 };
     const checkinDate = deltaToDateStr(comp.checkinDay);
     const checkoutDate = deltaToDateStr(comp.checkoutDay);
     const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
     const zoneDist = calculateZoneTotalDistance(zone);
+    const nightSummary = comp.nightTransitConsumed > 0
+      ? `${comp.nights} nuit(s) hôtel + ${comp.nightTransitConsumed} nuit(s) transport`
+      : `${comp.nights} nuit(s)`;
 
     html += `
       <div class="p-3 bg-white rounded-lg border border-slate-200 flex flex-col justify-between" style="border-left: 4px solid ${zone.color}">
@@ -1486,7 +1507,7 @@ async function generateRoadbookContent() {
           <div>
             <span class="font-bold text-slate-800 block">${zone.name}</span>
             ${zone.desc ? `<p class="text-xs text-slate-500 mt-0.5">${zone.desc}</p>` : ''}
-            <span class="text-xs text-slate-500">J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${comp.nights} nuit(s) • ${checkinDate} à ${checkoutDate})</span>
+            <span class="text-xs text-slate-500">J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${nightSummary} • ${checkinDate} à ${checkoutDate})</span>
             <span class="text-xs font-mono font-bold text-emerald-600 block mt-1">Distance secteur (local) : ${zoneDist.toFixed(1)} km</span>
           </div>
         </div>
@@ -1495,7 +1516,9 @@ async function generateRoadbookContent() {
             <div><i class="fas fa-hotel mr-1 text-blue-600"></i> <strong>Hébergement(s) :</strong> ${zoneHotels.map(h => h.name + (h.desc ? ` (${h.desc})` : '')).join(', ')}</div>
             ${zoneHotels.map(h => h.url ? `<div><a href="${h.url}" target="_blank" class="text-indigo-600 hover:underline"><i class="fas fa-link mr-1"></i>${h.url}</a></div>` : '').join('')}
           </div>
-        ` : '<div class="mt-2 text-xs text-amber-600 italic">⚠️ Aucun hébergement configuré (0 nuit)</div>'}
+        ` : (comp.nightTransitConsumed > 0
+          ? `<div class="mt-2 text-xs text-amber-700 font-medium">🛌 Nuit(s) assurée(s) en transport de nuit</div>`
+          : '<div class="mt-2 text-xs text-amber-600 italic">⚠️ Aucun hébergement configuré (0 nuit)</div>')}
       </div>
     `;
   });
@@ -1549,7 +1572,13 @@ async function generateRoadbookContent() {
       const tRouteInfo = isTRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
       const modeIcon = getTransitModeIcon(t.mode);
       const tDurStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
-      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>${t.isNightTransit ? ' • <strong>🛌 Nuit à bord</strong>' : ''}.</div><span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span></div>`;
+      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex flex-col space-y-1">
+        <div class="flex items-center justify-between">
+          <div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>${t.isNightTransit ? ` • <strong>🛌 Nuit à bord (${t.nightCount || 1} nuit(s))</strong>` : ''}.</div>
+          <span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span>
+        </div>
+        ${t.desc ? `<div class="text-amber-800 whitespace-pre-line font-mono text-[11px] pt-1 border-t border-amber-200/70">${t.desc}</div>` : ''}
+      </div>`;
     }
 
     if (activeHotel) {
@@ -1711,13 +1740,18 @@ function locateAndHighlightItem(type, id) {
 }
 
 function toggleTransitNight(transitId, isNight) {
-  if (!appState.customTransits) appState.customTransits = [];
+  if (!Array.isArray(appState.customTransits)) {
+    appState.customTransits = appState.customTransits ? Object.values(appState.customTransits) : [];
+  }
   let customT = appState.customTransits.find(ct => ct.id === transitId);
   if (!customT) {
     customT = { id: transitId, isNightTransit: isNight, nightCount: 1 };
     appState.customTransits.push(customT);
   } else {
     customT.isNightTransit = isNight;
+    if (isNight && !customT.nightCount) {
+      customT.nightCount = 1;
+    }
   }
   invalidateRouteCache();
   renderApp();

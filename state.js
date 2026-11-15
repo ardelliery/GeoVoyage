@@ -1,6 +1,6 @@
 /* ==========================================================================
    GeoVoyage - État de l'Application et Logique Métier (state.js)
-   Version corrigée (Correction de la récursion infinie getTransits <-> getZoneComputedDates)
+   Version finale avec gestion complète du Night Transit sans récursion
    ========================================================================== */
 
 if ('serviceWorker' in navigator) {
@@ -197,8 +197,11 @@ function deltaToShortDateStr(deltaDays) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-/* CORRECTION DE LA RÉCURSION : Utilisation directe de appState.customTransits 
-   au lieu d'appeler getTransits() à l'intérieur de getZoneComputedDates() */
+/**
+ * Calcule les jours de début (checkinDay), fin (checkoutDay) et nuits d'hôtel effectives
+ * pour chaque zone. Déduit automatiquement les nuits remplacées par un Night Transit
+ * sur la zone amont (de départ du transit de nuit), sans appel récursif à getTransits().
+ */
 function getZoneComputedDates() {
   let currentDay = 0;
   let mapping = {};
@@ -209,23 +212,36 @@ function getZoneComputedDates() {
 
   appState.zones.forEach((zone, index) => {
     const hotel = appState.hotels.find(h => h.zoneId === zone.id);
-    let nights = hotel ? (parseInt(hotel.nights) || 1) : 1;
+    const rawNights = hotel ? (parseInt(hotel.nights) || 0) : 1;
+    let effectiveNights = rawNights;
+    let nightTransitConsumed = 0;
 
-    // Déduction automatique des nuits si un transit de nuit précède ou touche cette zone
+    // Règle métier Night Transit : la nuit à bord remplace une nuit d'hôtel sur la zone amont (départ)
     customTransitsList.forEach(t => {
-      if (t.isNightTransit && t.nightCount) {
-        if (index === 0 && t.id === 'transit_dep_first') {
-          nights = Math.max(0, nights - t.nightCount);
+      if (t && t.isNightTransit) {
+        const count = parseInt(t.nightCount) || 1;
+        // Transit inter-zones partant de cette zone vers la zone suivante
+        if (index < appState.zones.length - 1 && t.id === `transit_${zone.id}_${appState.zones[index + 1].id}`) {
+          nightTransitConsumed += count;
         }
-        if (index > 0 && t.id === `transit_${appState.zones[index - 1].id}_${zone.id}`) {
-          nights = Math.max(0, nights - t.nightCount);
+        // Transit retour partant de la dernière zone vers l'arrivée
+        if (index === appState.zones.length - 1 && t.id === 'transit_last_arr') {
+          nightTransitConsumed += count;
         }
       }
     });
 
+    effectiveNights = Math.max(0, rawNights - nightTransitConsumed);
+
     const checkinDay = currentDay;
-    const checkoutDay = currentDay + nights;
-    mapping[zone.id] = { checkinDay, checkoutDay, nights };
+    const checkoutDay = currentDay + effectiveNights + nightTransitConsumed;
+    mapping[zone.id] = { 
+      checkinDay, 
+      checkoutDay, 
+      nights: effectiveNights, 
+      rawNights,
+      nightTransitConsumed 
+    };
     
     currentDay = checkoutDay;
   });
@@ -262,7 +278,10 @@ function getTransits() {
     const to = appState.zones[i+1];
     const compFrom = computed[from.id];
     const transitId = `transit_${from.id}_${to.id}`;
-    let transitObj = { id: transitId, name: `Transit : ${from.name} ➔ ${to.name}`, day: compFrom ? compFrom.checkoutDay : 0, mode: 'Voiture', from, to, isNightTransit: false, nightCount: 1, desc: '' };
+    // Si le transit est de nuit, le départ s'effectue le soir du dernier jour d'hôtel effectif
+    const nightOffset = (compFrom && compFrom.nightTransitConsumed) ? compFrom.nightTransitConsumed : 0;
+    const transitDay = compFrom ? Math.max(compFrom.checkinDay, compFrom.checkoutDay - nightOffset) : 0;
+    let transitObj = { id: transitId, name: `Transit : ${from.name} ➔ ${to.name}`, day: transitDay, mode: 'Voiture', from, to, isNightTransit: false, nightCount: 1, desc: '' };
     const customT = customTransitsList.find(ct => ct.id === transitId);
     if (customT) { transitObj = { ...transitObj, ...customT }; }
     transits.push(transitObj);
@@ -277,7 +296,9 @@ function getTransits() {
   const lastZone = appState.zones[appState.zones.length - 1];
   const compLast = computed[lastZone.id];
   const arrTransitId = 'transit_last_arr';
-  let arrTransitObj = { id: arrTransitId, name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: compLast ? compLast.checkoutDay : 0, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr', isNightTransit: false, nightCount: 1, desc: '' };
+  const lastNightOffset = (compLast && compLast.nightTransitConsumed) ? compLast.nightTransitConsumed : 0;
+  const arrTransitDay = compLast ? Math.max(compLast.checkinDay, compLast.checkoutDay - lastNightOffset) : 0;
+  let arrTransitObj = { id: arrTransitId, name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: arrTransitDay, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr', isNightTransit: false, nightCount: 1, desc: '' };
   const customArr = customTransitsList.find(ct => ct.id === arrTransitId);
   if (customArr) { arrTransitObj = { ...arrTransitObj, ...customArr }; }
   transits.push(arrTransitObj);
@@ -300,11 +321,13 @@ function getDayContextDescription(curDay) {
     return comp && curDay >= comp.checkinDay && curDay <= comp.checkoutDay;
   });
   if (!currentZone) return "Hors secteur (Départ / Arrivée)";
-  const activeHotel = appState.hotels.find(h => {
-    const comp = computed[h.zoneId];
-    return comp && curDay >= comp.checkinDay && curDay < comp.checkoutDay;
-  });
-  const hotelStr = activeHotel ? ` / Hôtel : ${activeHotel.name}` : ' / ⚠️ Nuit en transit ou pas d\'hôtel';
+  
+  const compZone = computed[currentZone.id];
+  const activeHotel = (compZone && compZone.nights > 0) ? appState.hotels.find(h => {
+    return h.zoneId === currentZone.id && curDay >= compZone.checkinDay && curDay < (compZone.checkinDay + compZone.nights);
+  }) : null;
+  
+  const hotelStr = activeHotel ? ` / Hôtel : ${activeHotel.name}` : ' / 🛌 Nuit en transit ou sans hôtel';
   return `Secteur : ${currentZone.name}${hotelStr}`;
 }
 
@@ -352,17 +375,19 @@ function calculateDayRoute(curDay) {
   const spots = daySpotIds.map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
   const computed = getZoneComputedDates();
   
-  const activeHotel = appState.hotels.find(h => {
+  const transits = getTransits().filter(t => t.day === curDay);
+  const isTransit = transits.length > 0;
+  const isNightTransitDay = transits.some(t => t.isNightTransit);
+
+  // Pas d'hôtel actif si la nuit est passée en transport de nuit ou si les nuits effectives de la zone sont épuisées
+  const activeHotel = isNightTransitDay ? null : appState.hotels.find(h => {
     const comp = computed[h.zoneId];
-    return comp && curDay >= comp.checkinDay && curDay < comp.checkoutDay;
+    return comp && comp.nights > 0 && curDay >= comp.checkinDay && curDay < (comp.checkinDay + comp.nights);
   });
 
   let originPoint = null;
   let destPoint = null;
   let transitSpots = [];
-
-  const transits = getTransits().filter(t => t.day === curDay);
-  const isTransit = transits.length > 0;
 
   if (isTransit) {
     const t = transits[0];
