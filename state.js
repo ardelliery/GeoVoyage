@@ -1,6 +1,6 @@
 /* ==========================================================================
    GeoVoyage - État de l'Application et Logique Métier (state.js)
-   Version finale avec gestion complète du Night Transit sans récursion
+   Version finale avec gestion complète du Night Transit (fromPoint / toPoint)
    ========================================================================== */
 
 if ('serviceWorker' in navigator) {
@@ -49,37 +49,134 @@ let routePolyline = null;
 let mapPickMode = null;
 let shouldFitBoundsOnce = true;
 
+// === IndexedDB pour la persistance des données (fonctionne avec file://) ===
+const DB_NAME = 'GeoVoyageDB';
+const DB_STORE = 'appState';
+const DB_VERSION = 1;
+
 function saveToLocalStorage() {
-  try {
-    localStorage.setItem('geoVoyageState', JSON.stringify(appState));
-  } catch (e) {
-    console.error("Erreur de sauvegarde localStorage", e);
-  }
+  return new Promise((resolve, reject) => {
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      
+      request.onerror = () => {
+        console.error("Erreur IndexedDB lors de la sauvegarde", request.error);
+        reject(request.error);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          db.createObjectStore(DB_STORE);
+          console.log("IndexedDB: store créé");
+        }
+      };
+      
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const transaction = db.transaction([DB_STORE], 'readwrite');
+        const store = transaction.objectStore(DB_STORE);
+        const putRequest = store.put(appState, 'mainState');
+        
+        putRequest.onsuccess = () => {
+          console.log("IndexedDB: données sauvegardées avec succès");
+          resolve();
+        };
+        
+        putRequest.onerror = () => {
+          console.error("Erreur lors de l'écriture IndexedDB", putRequest.error);
+          reject(putRequest.error);
+        };
+        
+        transaction.oncomplete = () => {
+          db.close();
+        };
+      };
+    } catch (e) {
+      console.error("Erreur de sauvegarde IndexedDB", e);
+      reject(e);
+    }
+  });
 }
 
-function loadFromLocalStorage() {
-  try {
-    const saved = localStorage.getItem('geoVoyageState');
-    if (saved) {
-      appState = JSON.parse(saved);
-      if (!appState.dailyBonsPlans) appState.dailyBonsPlans = {};
-      if (!appState.transitSpotOrder) appState.transitSpotOrder = {};
-      if (!appState.customTransits) appState.customTransits = [];
-      if (!appState.activeTab) appState.activeTab = 'structure';
-      if (!appState.viewMode) appState.viewMode = 'designer';
-      if (!appState.name) appState.name = "Mon Voyage GeoVoyage";
-      if (appState.mapFocusMode === undefined) appState.mapFocusMode = false;
-      if (appState.isCacheStale === undefined) appState.isCacheStale = false;
-      if (!appState.routeCache) appState.routeCache = {};
-      if (appState.spots) appState.spots.forEach(s => { if (s.parentId === undefined) s.parentId = ''; });
+async function loadFromLocalStorage() {
+  return new Promise(async (resolve) => {
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
       
-      updateRecalculateButtonState();
-      return true;
+      request.onerror = () => {
+        console.error("Erreur IndexedDB lors du chargement", request.error);
+        resolve(false);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          db.createObjectStore(DB_STORE);
+          console.log("IndexedDB: store créé");
+        }
+      };
+      
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const transaction = db.transaction([DB_STORE], 'readonly');
+        const store = transaction.objectStore(DB_STORE);
+        const getRequest = store.get('mainState');
+        
+        getRequest.onsuccess = async () => {
+          if (getRequest.result) {
+            const parsed = getRequest.result;
+            console.log("[IndexedDB] === DONNÉES CHARGÉES ===");
+            console.log("[IndexedDB] Zones:", parsed.zones?.length || 0);
+            if (parsed.zones) {
+              parsed.zones.forEach((z, i) => console.log(`[IndexedDB]   Zone ${i}: "${z.name}" (${z.id})`));
+            }
+            console.log("[IndexedDB] Spots:", parsed.spots?.length || 0);
+            if (parsed.spots) {
+              parsed.spots.forEach((s, i) => console.log(`[IndexedDB]   Spot ${i}: "${s.name}" (${s.id})`));
+            }
+            console.log("[IndexedDB] Hôtels:", parsed.hotels?.length || 0);
+            if (parsed.hotels) {
+              parsed.hotels.forEach((h, i) => console.log(`[IndexedDB]   Hôtel ${i}: "${h.name}" (${h.id})`));
+            }
+            console.log("[IndexedDB] Bons Plans:", parsed.bonsPlans?.length || 0);
+            appState = parsed;
+            if (!appState.dailyBonsPlans) appState.dailyBonsPlans = {};
+            if (!appState.transitSpotOrder) appState.transitSpotOrder = {};
+            if (!appState.customTransits) appState.customTransits = [];
+            if (!appState.activeTab) appState.activeTab = 'structure';
+            if (!appState.viewMode) appState.viewMode = 'designer';
+            if (!appState.name) appState.name = "Mon Voyage GeoVoyage";
+            if (appState.mapFocusMode === undefined) appState.mapFocusMode = false;
+            if (appState.isCacheStale === undefined) appState.isCacheStale = false;
+            if (!appState.routeCache) appState.routeCache = {};
+            if (appState.spots) appState.spots.forEach(s => { if (s.parentId === undefined) s.parentId = ''; });
+            
+            console.log("[IndexedDB] === appState après chargement ===");
+            console.log("[IndexedDB] Zones:", appState.zones?.length || 0);
+            console.log("[IndexedDB] Spots:", appState.spots?.length || 0);
+            
+            db.close();
+            updateRecalculateButtonState();
+            resolve(true);
+          } else {
+            console.warn("[IndexedDB] Aucune donnée sauvegardée trouvée");
+            db.close();
+            resolve(false);
+          }
+        };
+        
+        getRequest.onerror = () => {
+          console.error("Erreur lors de la lecture IndexedDB", getRequest.error);
+          db.close();
+          resolve(false);
+        };
+      };
+    } catch (e) {
+      console.error("Erreur de chargement IndexedDB", e);
+      resolve(false);
     }
-  } catch (e) {
-    console.error("Erreur de chargement localStorage", e);
-  }
-  return false;
+  });
 }
 
 function loadDemoData() {
@@ -137,15 +234,53 @@ function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+/**
+ * Résout le point géographique d'ancrage d'une zone :
+ * 1. Priorité à l'hôtel de la zone s'il existe.
+ * 2. Sinon, repli sur le point d'arrivée (toPoint) du transit menant à cette zone (ex: bus de nuit).
+ * 3. Sinon, repli sur le point de départ (fromPoint) du transit quittant cette zone.
+ */
+function getZoneAnchorPoint(zoneId) {
+  const hotel = appState.hotels.find(h => h.zoneId === zoneId);
+  if (hotel && hotel.lat !== undefined && hotel.lng !== undefined) {
+    return { name: hotel.name, lat: hotel.lat, lng: hotel.lng };
+  }
+
+  const zoneIndex = appState.zones.findIndex(z => z.id === zoneId);
+  if (zoneIndex === -1) return null;
+
+  const customTransitsList = Array.isArray(appState.customTransits) 
+    ? appState.customTransits 
+    : Object.values(appState.customTransits || {});
+
+  const incomingTransitId = zoneIndex === 0 
+    ? 'transit_dep_first' 
+    : `transit_${appState.zones[zoneIndex - 1].id}_${zoneId}`;
+  const incomingTransit = customTransitsList.find(ct => ct && ct.id === incomingTransitId);
+  if (incomingTransit && incomingTransit.toPoint && incomingTransit.toPoint.lat !== undefined && incomingTransit.toPoint.lng !== undefined) {
+    return incomingTransit.toPoint;
+  }
+
+  const outgoingTransitId = zoneIndex === appState.zones.length - 1 
+    ? 'transit_last_arr' 
+    : `transit_${zoneId}_${appState.zones[zoneIndex + 1].id}`;
+  const outgoingTransit = customTransitsList.find(ct => ct && ct.id === outgoingTransitId);
+  if (outgoingTransit && outgoingTransit.fromPoint && outgoingTransit.fromPoint.lat !== undefined && outgoingTransit.fromPoint.lng !== undefined) {
+    return outgoingTransit.fromPoint;
+  }
+
+  return null;
+}
+
 function getNearestZoneInfo(lat, lng) {
   if (!appState.zones || appState.zones.length === 0) return null;
   let minDistance = Infinity;
   let nearestZone = null;
 
   appState.zones.forEach(zone => {
-    const hotel = appState.hotels.find(h => h.zoneId === zone.id);
-    const refLat = hotel ? hotel.lat : null;
-    const refLng = hotel ? hotel.lng : null;
+    const anchor = getZoneAnchorPoint(zone.id);
+    const refLat = anchor ? anchor.lat : null;
+    const refLng = anchor ? anchor.lng : null;
 
     if (refLat !== null && refLng !== null) {
       const dist = haversineDistanceKm(lat, lng, refLat, refLng);
@@ -199,8 +334,8 @@ function deltaToShortDateStr(deltaDays) {
 
 /**
  * Calcule les jours de début (checkinDay), fin (checkoutDay) et nuits d'hôtel effectives
- * pour chaque zone. Déduit automatiquement les nuits remplacées par un Night Transit
- * sur la zone amont (de départ du transit de nuit), sans appel récursif à getTransits().
+ * pour chaque zone. Les transits de nuit qui ARRIVENT à une zone décalent le checkin.
+ * Les transits de nuit qui PARTENT d'une zone décalent le checkout et le jour actuel.
  */
 function getZoneComputedDates() {
   let currentDay = 0;
@@ -212,38 +347,61 @@ function getZoneComputedDates() {
 
   appState.zones.forEach((zone, index) => {
     const hotel = appState.hotels.find(h => h.zoneId === zone.id);
-    const rawNights = hotel ? (parseInt(hotel.nights) || 0) : 1;
-    let effectiveNights = rawNights;
-    let nightTransitConsumed = 0;
-
-    // Règle métier Night Transit : la nuit à bord remplace une nuit d'hôtel sur la zone amont (départ)
-    customTransitsList.forEach(t => {
-      if (t && t.isNightTransit) {
-        const count = parseInt(t.nightCount) || 1;
-        // Transit inter-zones partant de cette zone vers la zone suivante
-        if (index < appState.zones.length - 1 && t.id === `transit_${zone.id}_${appState.zones[index + 1].id}`) {
-          nightTransitConsumed += count;
-        }
-        // Transit retour partant de la dernière zone vers l'arrivée
-        if (index === appState.zones.length - 1 && t.id === 'transit_last_arr') {
-          nightTransitConsumed += count;
-        }
+    const rawNights = hotel ? (parseInt(hotel.nights) || 0) : 0;
+    
+    // === Transit de nuit QUI ARRIVE à cette zone (décale le checkin) ===
+    let nightTransitArrival = 0;
+    if (index === 0) {
+      // Transit initial du point de départ vers la première zone
+      const depTransit = customTransitsList.find(t => t && t.id === 'transit_dep_first');
+      if (depTransit && depTransit.isNightTransit) {
+        nightTransitArrival = parseInt(depTransit.nightCount) || 1;
       }
-    });
-
-    effectiveNights = Math.max(0, rawNights - nightTransitConsumed);
-
-    const checkinDay = currentDay;
-    const checkoutDay = currentDay + effectiveNights + nightTransitConsumed;
+    } else {
+      // Transit inter-zones arrivant de la zone précédente
+      const prevZoneId = appState.zones[index - 1].id;
+      const interTransit = customTransitsList.find(t => t && t.id === `transit_${prevZoneId}_${zone.id}`);
+      if (interTransit && interTransit.isNightTransit) {
+        nightTransitArrival = parseInt(interTransit.nightCount) || 1;
+      }
+    }
+    
+    // === Transit de nuit QUI PART de cette zone (décale le checkout) ===
+    let nightTransitDeparture = 0;
+    if (index === appState.zones.length - 1) {
+      // Transit retour partant de la dernière zone vers l'arrivée
+      const arrTransit = customTransitsList.find(t => t && t.id === 'transit_last_arr');
+      if (arrTransit && arrTransit.isNightTransit) {
+        nightTransitDeparture = parseInt(arrTransit.nightCount) || 1;
+      }
+    } else {
+      // Transit inter-zones partant vers la zone suivante
+      const nextZoneId = appState.zones[index + 1].id;
+      const interTransit = customTransitsList.find(t => t && t.id === `transit_${zone.id}_${nextZoneId}`);
+      if (interTransit && interTransit.isNightTransit) {
+        nightTransitDeparture = parseInt(interTransit.nightCount) || 1;
+      }
+    }
+    
+    // Le checkin est décalé par le transit de nuit d'arrivée
+    const checkinDay = currentDay + nightTransitArrival;
+    // Le checkout est checkin + nuits d'hôtel (le transit de nuit de départ est ajouté après)
+    // IMPORTANT : le transit de nuit ne réduit PAS le nombre de nuits d'hôtel
+    const checkoutDay = checkinDay + rawNights;
+    
     mapping[zone.id] = { 
       checkinDay, 
       checkoutDay, 
-      nights: effectiveNights, 
+      nights: rawNights, 
       rawNights,
-      nightTransitConsumed 
+      nightTransitArrival,
+      nightTransitDeparture,
+      // Compatibilité avec ui.js : nombre total de nuits transit pour cette zone
+      nightTransitConsumed: nightTransitArrival + nightTransitDeparture
     };
     
-    currentDay = checkoutDay;
+    // Le currentDay avance de la durée du séjour hôtel + transit de nuit de départ
+    currentDay = checkoutDay + nightTransitDeparture;
   });
   return mapping;
 }
@@ -268,7 +426,7 @@ function getTransits() {
 
   const firstZone = appState.zones[0];
   const depTransitId = 'transit_dep_first';
-  let depTransitObj = { id: depTransitId, name: `Transit Départ ➔ ${firstZone.name}`, day: 0, mode: 'Voiture', fromType: 'dep', toType: 'zone', toZone: firstZone, isNightTransit: false, nightCount: 1, desc: '' };
+  let depTransitObj = { id: depTransitId, name: `Transit Départ ➔ ${firstZone.name}`, day: 0, mode: 'Voiture', fromType: 'dep', toType: 'zone', toZone: firstZone, isNightTransit: false, nightCount: 1, desc: '', fromPoint: null, toPoint: null };
   const customDep = customTransitsList.find(ct => ct.id === depTransitId);
   if (customDep) { depTransitObj = { ...depTransitObj, ...customDep }; }
   transits.push(depTransitObj);
@@ -278,10 +436,9 @@ function getTransits() {
     const to = appState.zones[i+1];
     const compFrom = computed[from.id];
     const transitId = `transit_${from.id}_${to.id}`;
-    // Si le transit est de nuit, le départ s'effectue le soir du dernier jour d'hôtel effectif
-    const nightOffset = (compFrom && compFrom.nightTransitConsumed) ? compFrom.nightTransitConsumed : 0;
-    const transitDay = compFrom ? Math.max(compFrom.checkinDay, compFrom.checkoutDay - nightOffset) : 0;
-    let transitObj = { id: transitId, name: `Transit : ${from.name} ➔ ${to.name}`, day: transitDay, mode: 'Voiture', from, to, isNightTransit: false, nightCount: 1, desc: '' };
+    // Le transit part le jour même du checkout de la zone (après toutes les nuits d'hôtel)
+    const transitDay = compFrom ? compFrom.checkoutDay : 0;
+    let transitObj = { id: transitId, name: `Transit : ${from.name} ➔ ${to.name}`, day: transitDay, mode: 'Voiture', from, to, isNightTransit: false, nightCount: 1, desc: '', fromPoint: null, toPoint: null };
     const customT = customTransitsList.find(ct => ct.id === transitId);
     if (customT) { transitObj = { ...transitObj, ...customT }; }
     transits.push(transitObj);
@@ -296,9 +453,9 @@ function getTransits() {
   const lastZone = appState.zones[appState.zones.length - 1];
   const compLast = computed[lastZone.id];
   const arrTransitId = 'transit_last_arr';
-  const lastNightOffset = (compLast && compLast.nightTransitConsumed) ? compLast.nightTransitConsumed : 0;
-  const arrTransitDay = compLast ? Math.max(compLast.checkinDay, compLast.checkoutDay - lastNightOffset) : 0;
-  let arrTransitObj = { id: arrTransitId, name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: arrTransitDay, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr', isNightTransit: false, nightCount: 1, desc: '' };
+  // Le transit retour part le jour même du checkout de la dernière zone
+  const arrTransitDay = compLast ? compLast.checkoutDay : 0;
+  let arrTransitObj = { id: arrTransitId, name: `Transit ${lastZone.name} ➔ Arrivée (Retour)`, day: arrTransitDay, mode: 'Voiture', fromType: 'zone', fromZone: lastZone, toType: 'arr', isNightTransit: false, nightCount: 1, desc: '', fromPoint: null, toPoint: null };
   const customArr = customTransitsList.find(ct => ct.id === arrTransitId);
   if (customArr) { arrTransitObj = { ...arrTransitObj, ...customArr }; }
   transits.push(arrTransitObj);
@@ -336,14 +493,14 @@ function calculateTransitDistances(transit) {
   let destPoint = null;
 
   if (transit.id === 'transit_dep_first') {
-    originPoint = appState.departurePoint;
-    destPoint = transit.toZone ? (appState.hotels.find(h => h.zoneId === transit.toZone.id) || appState.arrivalPoint) : appState.arrivalPoint;
+    originPoint = transit.fromPoint || appState.departurePoint;
+    destPoint = transit.toPoint || (transit.toZone ? (getZoneAnchorPoint(transit.toZone.id) || appState.arrivalPoint) : appState.arrivalPoint);
   } else if (transit.id === 'transit_last_arr') {
-    originPoint = transit.fromZone ? (appState.hotels.find(h => h.zoneId === transit.fromZone.id) || appState.departurePoint) : appState.departurePoint;
-    destPoint = appState.arrivalPoint;
+    originPoint = transit.fromPoint || (transit.fromZone ? (getZoneAnchorPoint(transit.fromZone.id) || appState.departurePoint) : appState.departurePoint);
+    destPoint = transit.toPoint || appState.arrivalPoint;
   } else {
-    originPoint = transit.from ? (appState.hotels.find(h => h.zoneId === transit.from.id) || appState.departurePoint) : appState.departurePoint;
-    destPoint = transit.to ? (appState.hotels.find(h => h.zoneId === transit.to.id) || appState.arrivalPoint) : appState.arrivalPoint;
+    originPoint = transit.fromPoint || (transit.from ? (getZoneAnchorPoint(transit.from.id) || appState.departurePoint) : appState.departurePoint);
+    destPoint = transit.toPoint || (transit.to ? (getZoneAnchorPoint(transit.to.id) || appState.arrivalPoint) : appState.arrivalPoint);
   }
 
   const rawTransitSpots = appState.spots.filter(s => s.target === transit.id);
@@ -385,6 +542,11 @@ function calculateDayRoute(curDay) {
     return comp && comp.nights > 0 && curDay >= comp.checkinDay && curDay < (comp.checkinDay + comp.nights);
   });
 
+  const currentZone = appState.zones.find(z => {
+    const comp = computed[z.id];
+    return comp && curDay >= comp.checkinDay && curDay <= comp.checkoutDay;
+  });
+
   let originPoint = null;
   let destPoint = null;
   let transitSpots = [];
@@ -398,9 +560,21 @@ function calculateDayRoute(curDay) {
   } else if (activeHotel) {
     originPoint = activeHotel;
     destPoint = activeHotel;
+  } else if (currentZone) {
+    const anchor = getZoneAnchorPoint(currentZone.id);
+    if (anchor) {
+      originPoint = anchor;
+      destPoint = anchor;
+    } else if (curDay === 0) {
+      originPoint = appState.departurePoint;
+      destPoint = appState.arrivalPoint;
+    } else {
+      originPoint = appState.arrivalPoint;
+      destPoint = appState.arrivalPoint;
+    }
   } else if (curDay === 0) {
     originPoint = appState.departurePoint;
-    destPoint = appState.zones.length > 0 ? (appState.hotels.find(h => h.zoneId === appState.zones[0].id) || appState.arrivalPoint) : appState.arrivalPoint;
+    destPoint = appState.zones.length > 0 ? (getZoneAnchorPoint(appState.zones[0].id) || appState.arrivalPoint) : appState.arrivalPoint;
   } else {
     originPoint = appState.arrivalPoint;
     destPoint = appState.arrivalPoint;
