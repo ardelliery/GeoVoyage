@@ -9,9 +9,9 @@
         </div>
         <h2 class="text-base sm:text-lg font-extrabold text-indigo-950 dark:text-indigo-200">Mode d'Emploi GeoVoyage</h2>
       </div>
-      <!-- Badge de version statique -->
+      <!-- Badge de version mis à jour -->
       <span class="bg-indigo-600/10 dark:bg-indigo-400/10 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-3 py-1 rounded-xl text-xs font-mono font-bold">
-        v10
+        v3.0
       </span>
     </div>
     <p class="text-slate-600 dark:text-slate-300">
@@ -31,7 +31,7 @@
         <div class="font-bold text-slate-900 dark:text-white flex items-center">
           <i class="fa-solid fa-flag-checkered text-emerald-500 mr-2"></i> 1. Les Points Extrêmes
         </div>
-        <p class="text-xs text-slate-600 dark:text-slate-400"><strong>Départ :</strong> Point global (ex: domicile ou aéroport).</p>
+        <p class="text-xs text-slate-600 dark:text-slate-400"><strong>Départ :</strong> Point global (ex: domicile ou aéroport) avec date de référence J0.</p>
         <p class="text-xs text-slate-600 dark:text-slate-400"><strong>Arrivée :</strong> Point final du périple (retour).</p>
       </div>
 
@@ -39,14 +39,14 @@
         <div class="font-bold text-slate-900 dark:text-white flex items-center">
           <i class="fa-solid fa-layer-group text-indigo-500 mr-2"></i> 2. Les Secteurs (Zones)
         </div>
-        <p class="text-xs text-slate-600 dark:text-slate-400">Zone géographique cohérente de séjour (ex: <em>Secteur Manosque</em>). Regroupe les hébergements et définit le calendrier.</p>
+        <p class="text-xs text-slate-600 dark:text-slate-400">Zone géographique cohérente de séjour (ex: <em>Secteur Manosque</em>). Regroupe les hébergements et structure dynamiquement le calendrier.</p>
       </div>
 
       <div class="p-4 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5 shadow-sm">
         <div class="font-bold text-slate-900 dark:text-white flex items-center">
           <i class="fa-solid fa-hotel text-blue-500 mr-2"></i> 3. Les Hébergements (Hôtels)
         </div>
-        <p class="text-xs text-slate-600 dark:text-slate-400">Rattachés obligatoirement à un secteur. Leur nombre de nuits calcule automatiquement le planning. Possèdent un <strong>rayon de confort (km)</strong> pour les alertes de distance.</p>
+        <p class="text-xs text-slate-600 dark:text-slate-400">Rattachés obligatoirement à un secteur. Leur nombre de nuits calcule automatiquement le planning. Possèdent un <strong>rayon de confort (km)</strong> pour déclencher les alertes de distance.</p>
       </div>
 
       <div class="p-4 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5 shadow-sm">
@@ -72,43 +72,43 @@
     </div>
   </section>
 
-  <!-- PARTIE 2 : METHODOLOGIE -->
+  <!-- PARTIE 2 : METHODOLOGIE & BONNES PRATIQUES -->
   <section class="space-y-4">
     <h3 class="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400 border-b border-slate-200 dark:border-slate-800 pb-2 flex items-center">
-      <i class="fa-solid fa-list-check mr-2.5"></i>Partie 2 : Méthodologie – Créer un Voyage de Zéro
+      <i class="fa-solid fa-list-check mr-2.5"></i>Partie 2 : Méthodologie & Bonnes Pratiques
     </h3>
-    <p class="text-slate-500 dark:text-slate-400 text-xs">Planifiez du macro au micro, sans contrainte prématurée :</p>
+    <p class="text-slate-500 dark:text-slate-400 text-xs">Planifiez du macro au micro, en suivant les meilleures pratiques de l'outil :</p>
 
     <div class="space-y-3">
       <div class="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start space-x-3">
         <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
         <div class="space-y-1">
           <strong class="text-slate-900 dark:text-white text-sm">Poser le Cadre (Squelette Macro)</strong>
-          <p class="text-xs text-slate-600 dark:text-slate-400">Saisissez le nom du voyage, fixez la date de départ ($J_0$), définissez le point de départ, l'arrivée et créez vos grands secteurs.</p>
+          <p class="text-xs text-slate-600 dark:text-slate-400">Saisissez le nom du voyage, fixez la date de départ (J0), définissez le point de départ, l'arrivée et créez vos grands secteurs géographiques.</p>
         </div>
       </div>
 
       <div class="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start space-x-3">
         <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
         <div class="space-y-1">
-          <strong class="text-slate-900 dark:text-white text-sm">Capturer les Idées (Spots Libres)</strong>
-          <p class="text-xs text-slate-600 dark:text-slate-400">Ajoutez tous vos lieux d'intérêt sans vous soucier des dates (recherche Nominatim, clic sur la carte ou import de photos avec EXIF GPS). Organisez avec des sous-spots.</p>
+          <strong class="text-slate-900 dark:text-white text-sm">Capturer les Idées & Utiliser le Clustering</strong>
+          <p class="text-xs text-slate-600 dark:text-slate-400">Ajoutez vos lieux d'intérêt (recherche Nominatim, clic carte ou import de photos avec EXIF GPS). Si vous avez beaucoup de spots non classés, utilisez l'assistant de <strong>Clustering (🪄)</strong> pour grouper automatiquement les spots par proximité et générer des zones/hôtels suggérés.</p>
         </div>
       </div>
 
       <div class="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start space-x-3">
         <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
         <div class="space-y-1">
-          <strong class="text-slate-900 dark:text-white text-sm">Ancrer le Séjour (Hébergements & Transits)</strong>
-          <p class="text-xs text-slate-600 dark:text-slate-400">Créez les hébergements par secteur avec leur nombre de nuitées (le calendrier se génère instantanément). Configurez les transits de nuit si nécessaire.</p>
+          <strong class="text-slate-900 dark:text-white text-sm">Ancrer le Séjour & Vérifier la Cohérence</strong>
+          <p class="text-xs text-slate-600 dark:text-slate-400">Créez les hébergements avec leur nombre de nuitées. Consultez régulièrement l'outil d'<strong>Analyse de Cohérence (⚠️)</strong> : il détecte automatiquement les hôtels manquants et les spots trop éloignés du rayon de confort de votre hébergement.</p>
         </div>
       </div>
 
       <div class="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start space-x-3">
         <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">4</span>
         <div class="space-y-1">
-          <strong class="text-slate-900 dark:text-white text-sm">Le Raffinement (Affectation & Réservations)</strong>
-          <p class="text-xs text-slate-600 dark:text-slate-400">Glissez/affectez les spots aux journées ($J+1$, $J+2$...) ou transits. Ordonnez les étapes. Renseignez les notes de réservation et correspondances dans les transits (ex: correspondance à Cologne à 2h30).</p>
+          <strong class="text-slate-900 dark:text-white text-sm">Gestion Intelligente des Itinéraires (OSRM)</strong>
+          <p class="text-xs text-slate-600 dark:text-slate-400">L'application calcule les itinéraires réels par la route (via OSRM) et met en cache les résultats. Dès que vous modifiez une position, un transit ou une étape, le cache s'invalide automatiquement et le bouton <strong>Calculer OSRM (⏱️)</strong> vous permet de relancer les calculs à la demande.</p>
         </div>
       </div>
     </div>
@@ -131,9 +131,10 @@
           <strong class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">1. En-tête & Outils</strong>
           <ul class="space-y-1 text-xs text-slate-600 dark:text-slate-400">
             <li>• Bascule Concepteur / Voyageur</li>
-            <li>• Date $J_0$ & calcul dynamique</li>
-            <li>• Clustering automatique (🪄)</li>
-            <li>• Analyse de cohérence (⚠️)</li>
+            <li>• Date J0 & calcul dynamique</li>
+            <li>• Assistant Clustering automatique (🪄)</li>
+            <li>• Analyse de cohérence & alertes (⚠️)</li>
+            <li>• Recalcul manuel OSRM (⏱️)</li>
             <li>• Export PDF & Fichiers `.pvi`</li>
           </ul>
         </div>
@@ -141,9 +142,9 @@
         <div class="p-3.5 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
           <strong class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">2. Panneau Gauche</strong>
           <ul class="space-y-1 text-xs text-slate-600 dark:text-slate-400">
-            <li>• <strong>Secteurs & Bilan :</strong> Ordre des zones, transits et bilans km.</li>
-            <li>• <strong>Itinéraire du Jour :</strong> Gestion jour par jour et réordonnancement.</li>
-            <li>• <strong>Spots & Bons Plans :</strong> Liste centrale et affectation rapide.</li>
+            <li>• <strong>Secteurs & Bilan :</strong> Ordre des zones, transits et bilans kilométriques.</li>
+            <li>• <strong>Itinéraire du Jour :</strong> Gestion jour par jour et réordonnancement des étapes.</li>
+            <li>• <strong>Spots & Bons Plans :</strong> Liste centrale et affectation universelle.</li>
           </ul>
         </div>
 
@@ -152,8 +153,8 @@
           <ul class="space-y-1 text-xs text-slate-600 dark:text-slate-400">
             <li>• Recherche d'adresse Nominatim</li>
             <li>• Ajout par clic direct sur la carte</li>
-            <li>• Mode Plein écran</li>
-            <li>• Import de photos avec EXIF GPS</li>
+            <li>• Mode Plein écran (Focus carte)</li>
+            <li>• Import de photos avec métadonnées EXIF GPS</li>
           </ul>
         </div>
       </div>
@@ -168,7 +169,7 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div class="p-3.5 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
           <strong class="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">1. Navigation Chronologique</strong>
-          <p class="text-xs text-slate-600 dark:text-slate-400">Frise interactive supérieure et flèches de navigation pour basculer facilement entre les jours ($J+0$, $J+1$, ...) avec dates réelles.</p>
+          <p class="text-xs text-slate-600 dark:text-slate-400">Frise interactive supérieure et flèches de navigation pour basculer facilement entre les jours (J0, J0+1, ...) avec affichage des dates réelles.</p>
         </div>
 
         <div class="p-3.5 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">

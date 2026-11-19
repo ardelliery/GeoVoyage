@@ -1,6 +1,6 @@
 /* ==========================================================================
    GeoVoyage - Modals, Forms & Import/Export (modals.js)
-   Version mise à jour avec invalidation automatique du cache OSRM (invalidateRouteCache)
+   Version mise à jour avec prise en charge des transits de nuit (isNightTransit & fromPoint/toPoint)
    ========================================================================== */
 
 // ==========================================
@@ -26,11 +26,20 @@ function closeModal(modalId) {
 // ==========================================
 
 function openSpotModal(spotId = null) {
+  console.log('[openSpotModal] Called with spotId:', spotId);
   const form = document.getElementById('spotForm');
   if (form) form.reset();
 
   const preview = document.getElementById('spotPhotoPreview');
   if (preview) preview.classList.add('hidden');
+
+  console.log('[openSpotModal] DOM elements ready:', {
+    spotForm: !!document.getElementById('spotForm'),
+    spotName: !!document.getElementById('spotName'),
+    spotLat: !!document.getElementById('spotLat'),
+    spotLng: !!document.getElementById('spotLng'),
+    spotDesc: !!document.getElementById('spotDesc')
+  });
 
   document.getElementById('spotParentId').value = '';
   document.getElementById('spotParentSearch').value = '';
@@ -146,7 +155,6 @@ function saveSpot(event) {
     appState.spots.push(spotObj);
   }
 
-  // Nettoyage préalable des rattachements existants pour ce spot
   spotObj.target = null;
   Object.keys(appState.dailyItineraries).forEach(d => {
     if (appState.dailyItineraries[d]) {
@@ -154,7 +162,6 @@ function saveSpot(event) {
     }
   });
 
-  // Réattribution selon le formulaire
   if (targetType === 'transit') {
     spotObj.target = targetVal;
   } else if (targetType === 'day') {
@@ -165,37 +172,35 @@ function saveSpot(event) {
     }
   }
 
-  // ➔ Invalidation du cache OSRM (changement de position, création ou réaffectation)
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
   closeModal('spotModal');
   renderApp();
+  saveToLocalStorage();
 }
 
 function deleteSpot(spotId) {
   if (confirm('Voulez-vous vraiment supprimer ce spot ?')) {
     appState.spots = appState.spots.filter(s => s.id !== spotId);
 
-    // Supprimer aussi le spot des sous-spots référencés
     appState.spots.forEach(s => {
       if (s.parentId === spotId) s.parentId = null;
     });
 
-    // Supprimer des plannings quotidiens
     Object.keys(appState.dailyItineraries).forEach(d => {
       if (appState.dailyItineraries[d]) {
         appState.dailyItineraries[d] = appState.dailyItineraries[d].filter(id => id !== spotId);
       }
     });
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
 
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -220,12 +225,12 @@ function universalAssignSpot(spotId, targetValue) {
     }
   }
 
-  // ➔ Invalidation du cache OSRM
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
   renderApp();
+  saveToLocalStorage();
 }
 
 function unassignSpot(spotId) {
@@ -238,12 +243,12 @@ function unassignSpot(spotId) {
       }
     });
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
 
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -343,25 +348,25 @@ function saveHotel(event) {
     appState.hotels.push(newHotel);
   }
 
-  // ➔ Invalidation du cache OSRM (l'hébergement influe sur l'origine/destination de la journée)
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
   closeModal('hotelModal');
   renderApp();
+  saveToLocalStorage();
 }
 
 function deleteHotel(hotelId) {
   if (confirm('Voulez-vous vraiment supprimer cet hébergement ?')) {
     appState.hotels = appState.hotels.filter(h => h.id !== hotelId);
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
 
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -424,13 +429,27 @@ function saveZone(event) {
     appState.zones.push(newZone);
   }
 
-  // ➔ Invalidation du cache OSRM
+  // Before recalculating transits, save previous transit_last_arr zone target
+  const prevLastTransit = getTransits().find(t => t.id === 'transit_last_arr');
+  const prevLastZoneId = prevLastTransit ? (prevLastTransit.fromZone?.id || prevLastTransit.toZone?.id) : null;
+
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
+  cleanOrphanTransitsAndTargets();
+
+  // If transit_last_arr now points to a different zone, clear targets of spots/bons plans that pointed to it
+  const newLastTransit = getTransits().find(t => t.id === 'transit_last_arr');
+  const newLastZoneId = newLastTransit ? (newLastTransit.fromZone?.id || newLastTransit.toZone?.id) : null;
+  if (prevLastZoneId !== newLastZoneId) {
+    appState.spots.forEach(s => { if (s.target === 'transit_last_arr') s.target = ''; });
+    appState.bonsPlans.forEach(bp => { if (bp.target === 'transit_last_arr') bp.target = ''; });
+  }
+
   closeModal('zoneModal');
   renderApp();
+  saveToLocalStorage();
 }
 
 function deleteZone(zoneId) {
@@ -439,12 +458,12 @@ function deleteZone(zoneId) {
     appState.hotels = appState.hotels.filter(h => h.zoneId !== zoneId);
     cleanOrphanTransitsAndTargets();
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
 
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -556,13 +575,13 @@ function saveBonPlan(event) {
     }
   }
 
-  // ➔ Invalidation du cache OSRM
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
   closeModal('bonPlanModal');
   renderApp();
+  saveToLocalStorage();
 }
 
 function deleteBonPlan(bpId) {
@@ -574,12 +593,12 @@ function deleteBonPlan(bpId) {
       }
     });
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
 
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -604,12 +623,12 @@ function universalAssignBonPlan(bpId, targetValue) {
     }
   }
 
-  // ➔ Invalidation du cache OSRM
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
   renderApp();
+  saveToLocalStorage();
 }
 
 function unassignBonPlan(bpId) {
@@ -622,12 +641,12 @@ function unassignBonPlan(bpId) {
       }
     });
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
 
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -662,13 +681,13 @@ function saveEndpoint(event) {
     appState.arrivalPoint = { name, lat, lng };
   }
 
-  // ➔ Invalidation du cache OSRM (le point de départ/arrivée influe sur l'itinéraire global)
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
   closeModal('endpointModal');
   renderApp();
+  saveToLocalStorage();
 }
 
 function editTransitModal(transitId) {
@@ -691,6 +710,21 @@ function editTransitModal(transitId) {
   if (nightCountInput) {
     nightCountInput.value = t.nightCount || 1;
   }
+
+  // Remplissage des champs fromPoint et toPoint si présents dans la modale
+  const fromNameInput = document.getElementById('transitFromName');
+  const fromLatInput = document.getElementById('transitFromLat');
+  const fromLngInput = document.getElementById('transitFromLng');
+  if (fromNameInput) fromNameInput.value = (t.fromPoint && t.fromPoint.name) ? t.fromPoint.name : '';
+  if (fromLatInput) fromLatInput.value = (t.fromPoint && t.fromPoint.lat !== undefined) ? t.fromPoint.lat : '';
+  if (fromLngInput) fromLngInput.value = (t.fromPoint && t.fromPoint.lng !== undefined) ? t.fromPoint.lng : '';
+
+  const toNameInput = document.getElementById('transitToName');
+  const toLatInput = document.getElementById('transitToLat');
+  const toLngInput = document.getElementById('transitToLng');
+  if (toNameInput) toNameInput.value = (t.toPoint && t.toPoint.name) ? t.toPoint.name : '';
+  if (toLatInput) toLatInput.value = (t.toPoint && t.toPoint.lat !== undefined) ? t.toPoint.lat : '';
+  if (toLngInput) toLngInput.value = (t.toPoint && t.toPoint.lng !== undefined) ? t.toPoint.lng : '';
 
   openModal('transitModal');
 }
@@ -716,14 +750,42 @@ function saveTransit(event) {
   const isNightTransit = document.getElementById('transitIsNightTransit').checked;
   const nightCount = parseInt(document.getElementById('transitNightCount').value) || 1;
 
-  if (!appState.transitsCustom) appState.transitsCustom = {};
-  appState.transitsCustom[id] = { name, mode, desc, isNightTransit, nightCount };
+  const fromName = document.getElementById('transitFromName')?.value.trim() || '';
+  const fromLat = parseFloat(document.getElementById('transitFromLat')?.value);
+  const fromLng = parseFloat(document.getElementById('transitFromLng')?.value);
 
-  // ➔ Invalidation du cache OSRM (le mode de transport ou la durée impacte les calculs)
+  const toName = document.getElementById('transitToName')?.value.trim() || '';
+  const toLat = parseFloat(document.getElementById('transitToLat')?.value);
+  const toLng = parseFloat(document.getElementById('transitToLng')?.value);
+
+  let fromPoint = null;
+  if (fromName || !isNaN(fromLat) || !isNaN(fromLng)) {
+    fromPoint = { name: fromName, lat: isNaN(fromLat) ? 0 : fromLat, lng: isNaN(fromLng) ? 0 : fromLng };
+  }
+
+  let toPoint = null;
+  if (toName || !isNaN(toLat) || !isNaN(toLng)) {
+    toPoint = { name: toName, lat: isNaN(toLat) ? 0 : toLat, lng: isNaN(toLng) ? 0 : toLng };
+  }
+
+  if (!Array.isArray(appState.customTransits)) {
+    appState.customTransits = Object.values(appState.customTransits || {});
+  }
+
+  let existingIndex = appState.customTransits.findIndex(ct => ct.id === id);
+  const transitData = { id, name, mode, desc, isNightTransit, nightCount, fromPoint, toPoint };
+
+  if (existingIndex >= 0) {
+    appState.customTransits[existingIndex] = { ...appState.customTransits[existingIndex], ...transitData };
+  } else {
+    appState.customTransits.push(transitData);
+  }
+
   if (typeof invalidateRouteCache === 'function') {
     invalidateRouteCache();
   }
 
+  saveToLocalStorage();
   closeModal('transitModal');
   renderApp();
 }
@@ -806,7 +868,6 @@ function runClusteringAlgorithm() {
       });
     });
 
-    // ➔ Invalidation du cache OSRM
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
@@ -816,6 +877,7 @@ function runClusteringAlgorithm() {
 
   closeModal('clusteringModal');
   renderApp();
+  saveToLocalStorage();
 }
 
 async function openHelpModal() {
@@ -879,7 +941,7 @@ function filterSpotParentOptions() {
     candidates.forEach(s => {
       const dist = haversineDistanceKm(currentLat, currentLng, s.lat, s.lng);
       dropdown.innerHTML += `
-        <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center" onclick="selectSpotParent('${s.id}', '${s.name.replace(/'/g, "\\'")}')">
+        <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center" onclick="selectSpotParent('${s.id}', '${s.name.replace(/'/g, "\'")}')">
           <span class="font-semibold text-slate-800 dark:text-slate-200">${s.name}</span>
           <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">${dist.toFixed(1)} km</span>
         </div>
@@ -926,7 +988,7 @@ function filterSpotTargetOptions() {
   dropdown.innerHTML = '';
   options.forEach(o => {
     dropdown.innerHTML += `
-      <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center" onclick="selectSpotTarget('${o.type}', '${o.val}', '${o.label.replace(/'/g, "\\'")}')">
+      <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center" onclick="selectSpotTarget('${o.type}', '${o.val}', '${o.label.replace(/'/g, "\'")}')">
         <span class="font-semibold text-slate-800 dark:text-slate-200">${o.label}</span>
         <span class="text-[10px] text-slate-500">${o.sub}</span>
       </div>
@@ -973,7 +1035,7 @@ function filterBpTargetOptions() {
   dropdown.innerHTML = '';
   options.forEach(o => {
     dropdown.innerHTML += `
-      <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center" onclick="selectBpTarget('${o.type}', '${o.val}', '${o.label.replace(/'/g, "\\'")}')">
+      <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center" onclick="selectBpTarget('${o.type}', '${o.val}', '${o.label.replace(/'/g, "\'")}')">
         <span class="font-semibold text-slate-800 dark:text-slate-200">${o.label}</span>
         <span class="text-[10px] text-slate-500">${o.sub}</span>
       </div>
@@ -990,9 +1052,13 @@ function selectBpTarget(type, val, label) {
 }
 
 async function searchSpotAddress() {
+  console.log('[searchSpotAddress] Called with query');
   const q = document.getElementById('spotSearchQuery').value.trim();
   const resContainer = document.getElementById('spotSearchResults');
-  if (!q) return;
+  if (!q) {
+    console.warn('[searchSpotAddress] Empty query');
+    return;
+  }
 
   resContainer.innerHTML = '<div class="p-2 text-slate-500">Recherche...</div>';
   resContainer.classList.remove('hidden');
@@ -1000,6 +1066,7 @@ async function searchSpotAddress() {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
     const data = await res.json();
+    console.log('[searchSpotAddress] Received', data.length, 'results');
     resContainer.innerHTML = '';
 
     if (data.length === 0) {
@@ -1008,31 +1075,63 @@ async function searchSpotAddress() {
       data.slice(0, 5).forEach(item => {
         const lat = parseFloat(item.lat);
         const lon = parseFloat(item.lon);
-        const nameEsc = item.display_name.replace(/'/g, "\\'");
-        resContainer.innerHTML += `
-          <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs" onclick="applySpotAddress('${nameEsc}', ${lat}, ${lon})">
-            <span class="font-bold block">${item.display_name.split(',')[0]}</span>
-            <span class="text-[10px] text-slate-500 block truncate">${item.display_name}</span>
-          </div>
-        `;
+        const displayName = item.display_name;
+        const shortName = displayName.split(',')[0];
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'font-bold block';
+        nameSpan.textContent = shortName;
+        resultDiv.appendChild(nameSpan);
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'text-[10px] text-slate-500 block truncate';
+        descSpan.textContent = displayName;
+        resultDiv.appendChild(descSpan);
+
+        resultDiv.addEventListener('click', () => {
+          console.log('[searchSpotAddress] Result clicked:', { lat, lon, name: shortName });
+          applySpotAddress(shortName, displayName, lat, lon);
+        });
+
+        resContainer.appendChild(resultDiv);
       });
     }
   } catch (err) {
+    console.error('[searchSpotAddress] Error:', err);
     resContainer.innerHTML = '<div class="p-2 text-red-500">Erreur réseau</div>';
   }
 }
 
-function applySpotAddress(name, lat, lng) {
-  document.getElementById('spotName').value = name.split(',')[0];
-  document.getElementById('spotLat').value = lat;
-  document.getElementById('spotLng').value = lng;
-  document.getElementById('spotSearchResults').classList.add('hidden');
-}
+function applySpotAddress(name, desc, lat, lng) {
+  console.log('[applySpotAddress] Called with:', { name, lat, lng });
+  const spotNameEl = document.getElementById('spotName');
+  const spotLatEl = document.getElementById('spotLat');
+  const spotLngEl = document.getElementById('spotLng');
+  const resContainer = document.getElementById('spotSearchResults');
 
+  if (spotNameEl) spotNameEl.value = name;
+  else console.error('[applySpotAddress] spotName element not found');
+  if (spotLatEl) spotLatEl.value = lat;
+  else console.error('[applySpotAddress] spotLat element not found');
+  if (spotLngEl) spotLngEl.value = lng;
+  else console.error('[applySpotAddress] spotLng element not found');
+
+  if (resContainer) resContainer.classList.add('hidden');
+  else console.warn('[applySpotAddress] spotSearchResults not found');
+
+  console.log('[applySpotAddress] Fields updated successfully');
+}
 async function searchHotelAddress() {
+  console.log('[searchHotelAddress] Called with query');
   const q = document.getElementById('hotelSearchQuery').value.trim();
   const resContainer = document.getElementById('hotelSearchResults');
-  if (!q) return;
+  if (!q) {
+    console.warn('[searchHotelAddress] Empty query');
+    return;
+  }
 
   resContainer.innerHTML = '<div class="p-2 text-slate-500">Recherche...</div>';
   resContainer.classList.remove('hidden');
@@ -1040,6 +1139,7 @@ async function searchHotelAddress() {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
     const data = await res.json();
+    console.log('[searchHotelAddress] Received', data.length, 'results');
     resContainer.innerHTML = '';
 
     if (data.length === 0) {
@@ -1048,31 +1148,63 @@ async function searchHotelAddress() {
       data.slice(0, 5).forEach(item => {
         const lat = parseFloat(item.lat);
         const lon = parseFloat(item.lon);
-        const nameEsc = item.display_name.replace(/'/g, "\\'");
-        resContainer.innerHTML += `
-          <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs" onclick="applyHotelAddress('${nameEsc}', ${lat}, ${lon})">
-            <span class="font-bold block">${item.display_name.split(',')[0]}</span>
-            <span class="text-[10px] text-slate-500 block truncate">${item.display_name}</span>
-          </div>
-        `;
+        const displayName = item.display_name;
+        const shortName = displayName.split(',')[0];
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'font-bold block';
+        nameSpan.textContent = shortName;
+        resultDiv.appendChild(nameSpan);
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'text-[10px] text-slate-500 block truncate';
+        descSpan.textContent = displayName;
+        resultDiv.appendChild(descSpan);
+
+        resultDiv.addEventListener('click', () => {
+          console.log('[searchHotelAddress] Result clicked:', { lat, lon, name: shortName });
+          applyHotelAddress(shortName, displayName, lat, lon);
+        });
+
+        resContainer.appendChild(resultDiv);
       });
     }
   } catch (err) {
+    console.error('[searchHotelAddress] Error:', err);
     resContainer.innerHTML = '<div class="p-2 text-red-500">Erreur réseau</div>';
   }
 }
 
-function applyHotelAddress(name, lat, lng) {
-  document.getElementById('hotelName').value = name.split(',')[0];
-  document.getElementById('hotelLat').value = lat;
-  document.getElementById('hotelLng').value = lng;
-  document.getElementById('hotelSearchResults').classList.add('hidden');
-}
+function applyHotelAddress(name, desc, lat, lng) {
+  console.log('[applyHotelAddress] Called with:', { name, lat, lng });
+  const hotelNameEl = document.getElementById('hotelName');
+  const hotelLatEl = document.getElementById('hotelLat');
+  const hotelLngEl = document.getElementById('hotelLng');
+  const resContainer = document.getElementById('hotelSearchResults');
 
+  if (hotelNameEl) hotelNameEl.value = name;
+  else console.error('[applyHotelAddress] hotelName element not found');
+  if (hotelLatEl) hotelLatEl.value = lat;
+  else console.error('[applyHotelAddress] hotelLat element not found');
+  if (hotelLngEl) hotelLngEl.value = lng;
+  else console.error('[applyHotelAddress] hotelLng element not found');
+
+  if (resContainer) resContainer.classList.add('hidden');
+  else console.warn('[applyHotelAddress] hotelSearchResults not found');
+
+  console.log('[applyHotelAddress] Fields updated successfully');
+}
 async function searchBpAddress() {
+  console.log('[searchBpAddress] Called with query');
   const q = document.getElementById('bpSearchQuery').value.trim();
   const resContainer = document.getElementById('bpSearchResults');
-  if (!q) return;
+  if (!q) {
+    console.warn('[searchBpAddress] Empty query');
+    return;
+  }
 
   resContainer.innerHTML = '<div class="p-2 text-slate-500">Recherche...</div>';
   resContainer.classList.remove('hidden');
@@ -1080,6 +1212,7 @@ async function searchBpAddress() {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
     const data = await res.json();
+    console.log('[searchBpAddress] Received', data.length, 'results');
     resContainer.innerHTML = '';
 
     if (data.length === 0) {
@@ -1088,31 +1221,63 @@ async function searchBpAddress() {
       data.slice(0, 5).forEach(item => {
         const lat = parseFloat(item.lat);
         const lon = parseFloat(item.lon);
-        const nameEsc = item.display_name.replace(/'/g, "\\'");
-        resContainer.innerHTML += `
-          <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs" onclick="applyBpAddress('${nameEsc}', ${lat}, ${lon})">
-            <span class="font-bold block">${item.display_name.split(',')[0]}</span>
-            <span class="text-[10px] text-slate-500 block truncate">${item.display_name}</span>
-          </div>
-        `;
+        const displayName = item.display_name;
+        const shortName = displayName.split(',')[0];
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'font-bold block';
+        nameSpan.textContent = shortName;
+        resultDiv.appendChild(nameSpan);
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'text-[10px] text-slate-500 block truncate';
+        descSpan.textContent = displayName;
+        resultDiv.appendChild(descSpan);
+
+        resultDiv.addEventListener('click', () => {
+          console.log('[searchBpAddress] Result clicked:', { lat, lon, name: shortName });
+          applyBpAddress(shortName, displayName, lat, lon);
+        });
+
+        resContainer.appendChild(resultDiv);
       });
     }
   } catch (err) {
+    console.error('[searchBpAddress] Error:', err);
     resContainer.innerHTML = '<div class="p-2 text-red-500">Erreur réseau</div>';
   }
 }
 
-function applyBpAddress(name, lat, lng) {
-  document.getElementById('bonPlanTitle').value = name.split(',')[0];
-  document.getElementById('bonPlanLat').value = lat;
-  document.getElementById('bonPlanLng').value = lng;
-  document.getElementById('bpSearchResults').classList.add('hidden');
-}
+function applyBpAddress(name, desc, lat, lng) {
+  console.log('[applyBpAddress] Called with:', { name, lat, lng });
+  const bpTitleEl = document.getElementById('bonPlanTitle');
+  const bpLatEl = document.getElementById('bonPlanLat');
+  const bpLngEl = document.getElementById('bonPlanLng');
+  const resContainer = document.getElementById('bpSearchResults');
 
+  if (bpTitleEl) bpTitleEl.value = name;
+  else console.error('[applyBpAddress] bonPlanTitle element not found');
+  if (bpLatEl) bpLatEl.value = lat;
+  else console.error('[applyBpAddress] bonPlanLat element not found');
+  if (bpLngEl) bpLngEl.value = lng;
+  else console.error('[applyBpAddress] bonPlanLng element not found');
+
+  if (resContainer) resContainer.classList.add('hidden');
+  else console.warn('[applyBpAddress] bpSearchResults not found');
+
+  console.log('[applyBpAddress] Fields updated successfully');
+}
 async function searchEndpointAddress() {
+  console.log('[searchEndpointAddress] Called with query');
   const q = document.getElementById('endpointSearchQuery').value.trim();
   const resContainer = document.getElementById('endpointSearchResults');
-  if (!q) return;
+  if (!q) {
+    console.warn('[searchEndpointAddress] Empty query');
+    return;
+  }
 
   resContainer.innerHTML = '<div class="p-2 text-slate-500">Recherche...</div>';
   resContainer.classList.remove('hidden');
@@ -1120,6 +1285,7 @@ async function searchEndpointAddress() {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
     const data = await res.json();
+    console.log('[searchEndpointAddress] Received', data.length, 'results');
     resContainer.innerHTML = '';
 
     if (data.length === 0) {
@@ -1128,25 +1294,54 @@ async function searchEndpointAddress() {
       data.slice(0, 5).forEach(item => {
         const lat = parseFloat(item.lat);
         const lon = parseFloat(item.lon);
-        const nameEsc = item.display_name.replace(/'/g, "\\'");
-        resContainer.innerHTML += `
-          <div class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs" onclick="applyEndpointAddress('${nameEsc}', ${lat}, ${lon})">
-            <span class="font-bold block">${item.display_name.split(',')[0]}</span>
-            <span class="text-[10px] text-slate-500 block truncate">${item.display_name}</span>
-          </div>
-        `;
+        const displayName = item.display_name;
+        const shortName = displayName.split(',')[0];
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-100 dark:border-slate-800 text-xs';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'font-bold block';
+        nameSpan.textContent = shortName;
+        resultDiv.appendChild(nameSpan);
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'text-[10px] text-slate-500 block truncate';
+        descSpan.textContent = displayName;
+        resultDiv.appendChild(descSpan);
+
+        resultDiv.addEventListener('click', () => {
+          console.log('[searchEndpointAddress] Result clicked:', { lat, lon, name: shortName });
+          applyEndpointAddress(displayName, lat, lon);
+        });
+
+        resContainer.appendChild(resultDiv);
       });
     }
   } catch (err) {
+    console.error('[searchEndpointAddress] Error:', err);
     resContainer.innerHTML = '<div class="p-2 text-red-500">Erreur réseau</div>';
   }
 }
 
 function applyEndpointAddress(name, lat, lng) {
-  document.getElementById('endpointName').value = name;
-  document.getElementById('endpointLat').value = lat;
-  document.getElementById('endpointLng').value = lng;
-  document.getElementById('endpointSearchResults').classList.add('hidden');
+  console.log('[applyEndpointAddress] Called with:', { name, lat, lng });
+  const endpointNameEl = document.getElementById('endpointName');
+  const endpointLatEl = document.getElementById('endpointLat');
+  const endpointLngEl = document.getElementById('endpointLng');
+  const resContainer = document.getElementById('endpointSearchResults');
+
+  if (endpointNameEl) endpointNameEl.value = name;
+  else console.error('[applyEndpointAddress] endpointName element not found');
+  if (endpointLatEl) endpointLatEl.value = lat;
+  else console.error('[applyEndpointAddress] endpointLat element not found');
+  if (endpointLngEl) endpointLngEl.value = lng;
+  else console.error('[applyEndpointAddress] endpointLng element not found');
+
+  if (resContainer) resContainer.classList.add('hidden');
+  else console.warn('[applyEndpointAddress] endpointSearchResults not found');
+
+  console.log('[applyEndpointAddress] Fields updated successfully');
 }
 
 // ==========================================
@@ -1223,7 +1418,8 @@ async function exportZIP() {
   const zip = new JSZip();
   const exportData = JSON.parse(JSON.stringify(appState));
   
-  // Suppression du cache d'itinéraire volumineux dans l'export JSON
+  exportData.pivotDate = appState.pivotDate;
+
   delete exportData.routeCache;
 
   const imagesFolder = zip.folder('images');
@@ -1289,6 +1485,11 @@ async function importZIP(event) {
 
     appState.name = importedState.name || 'Mon Voyage';
     appState.pivotDate = importedState.pivotDate || new Date().toISOString().split('T')[0];
+    const pivotInput = document.getElementById('pivotDateInput');
+    if (pivotInput) {
+      pivotInput.value = appState.pivotDate;
+    }
+
     appState.zones = importedState.zones || [];
     appState.hotels = importedState.hotels || [];
     appState.spots = importedState.spots || [];
@@ -1297,13 +1498,12 @@ async function importZIP(event) {
     appState.dailyBonsPlans = importedState.dailyBonsPlans || {};
     appState.departurePoint = importedState.departurePoint || { name: 'Départ Initial', lat: 48.8566, lng: 2.3522 };
     appState.arrivalPoint = importedState.arrivalPoint || { name: 'Arrivée Finale', lat: 48.8566, lng: 2.3522 };
-    appState.transitsCustom = importedState.transitsCustom || {};
+    appState.customTransits = importedState.customTransits || [];
     appState.transitSpotOrder = importedState.transitSpotOrder || {};
     appState.routeCache = {};
     appState.isCacheStale = true;
     shouldFitBoundsOnce = true;
 
-    // ➔ Invalidation du cache OSRM lors de l'import complet
     if (typeof invalidateRouteCache === 'function') {
       invalidateRouteCache();
     }
