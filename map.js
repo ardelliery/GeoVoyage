@@ -123,6 +123,7 @@ function onMapClick(e) {
     if (typeof invalidateRouteCache === 'function') invalidateRouteCache();
     
     renderApp();
+    saveToLocalStorage();
   } else if (mapPickMode === 'endpoint_arrival') {
     appState.arrivalPoint.lat = parseFloat(lat.toFixed(6));
     appState.arrivalPoint.lng = parseFloat(lng.toFixed(6));
@@ -132,6 +133,7 @@ function onMapClick(e) {
     if (typeof invalidateRouteCache === 'function') invalidateRouteCache();
     
     renderApp();
+    saveToLocalStorage();
   } else if (mapPickMode === 'spot') {
     document.getElementById('spotLat').value = lat.toFixed(6);
     document.getElementById('spotLng').value = lng.toFixed(6);
@@ -256,22 +258,55 @@ async function searchLocation() {
     el.onclick = () => {
       const lat = parseFloat(item.lat);
       const lon = parseFloat(item.lon);
-      const shortName = (item.display_name.split(',')[0] || '').replace(/'/g, "\\'");
-      const fullDesc = item.display_name.replace(/'/g, "\\'");
+      const shortName = (item.display_name.split(',')[0] || '').replace(/'/g, "\'");
+      const fullDesc = item.display_name.replace(/'/g, "\'");
 
       map.setView([lat, lon], 13);
+      const popupContent = document.createElement("div");
+      popupContent.className = "text-xs font-sans p-1.5 space-y-2";
+
+      const titleEl = document.createElement("b");
+      titleEl.textContent = item.display_name.split(",")[0];
+      popupContent.appendChild(titleEl);
+
+      const btnGroup = document.createElement("div");
+      btnGroup.className = "flex gap-1.5";
+
+      const spotBtn = document.createElement("button");
+      spotBtn.className = "bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs";
+      spotBtn.textContent = "+ Spot";
+      spotBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        console.log("[quickAdd] SPOT clicked:", { lat, lon, name: item.display_name.split(",")[0], desc: item.display_name });
+        quickAdd("spot", lat, lon, item.display_name.split(",")[0], item.display_name);
+      });
+
+      const hotelBtn = document.createElement("button");
+      hotelBtn.className = "bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs";
+      hotelBtn.textContent = "+ Hôtel";
+      hotelBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        console.log("[quickAdd] HOTEL clicked:", { lat, lon, name: item.display_name.split(",")[0], desc: item.display_name });
+        quickAdd("hotel", lat, lon, item.display_name.split(",")[0], item.display_name);
+      });
+
+      const bonplanBtn = document.createElement("button");
+      bonplanBtn.className = "bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs";
+      bonplanBtn.textContent = "+ Bon Plan";
+      bonplanBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        console.log("[quickAdd] BONPLAN clicked:", { lat, lon, name: item.display_name.split(",")[0], desc: item.display_name });
+        quickAdd("bonplan", lat, lon, item.display_name.split(",")[0], item.display_name);
+      });
+
+      btnGroup.appendChild(spotBtn);
+      btnGroup.appendChild(hotelBtn);
+      btnGroup.appendChild(bonplanBtn);
+      popupContent.appendChild(btnGroup);
+
       L.popup()
         .setLatLng([lat, lon])
-        .setContent(`
-          <div class="text-xs font-sans p-1.5 space-y-2">
-            <b>${item.display_name.split(',')[0]}</b>
-            <div class="flex gap-1.5">
-              <button onclick="quickAdd('spot', ${lat}, ${lon}, '${shortName}', '${fullDesc}')" class="bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Spot</button>
-              <button onclick="quickAdd('hotel', ${lat}, ${lon}, '${shortName}', '${fullDesc}')" class="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Hôtel</button>
-              <button onclick="quickAdd('bonplan', ${lat}, ${lon}, '${shortName}', '${fullDesc}')" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs">+ Bon Plan</button>
-            </div>
-          </div>
-        `)
+        .setContent(popupContent)
         .openOn(map);
       container.classList.add('hidden');
     };
@@ -280,8 +315,52 @@ async function searchLocation() {
 }
 
 function quickAdd(type, lat, lng, name = '', desc = '') {
+  console.log('[quickAdd] Function called:', { type, lat, lng, name: name?.substring(0, 50), desc: desc?.substring(0, 50) });
   map.closePopup();
-  if (type === 'spot') { openSpotModal(); document.getElementById('spotLat').value = lat; document.getElementById('spotLng').value = lng; if (name) document.getElementById('spotName').value = name; if (desc) document.getElementById('spotDesc').value = desc; }
-  else if (type === 'hotel') { openHotelModal(); document.getElementById('hotelLat').value = lat; document.getElementById('hotelLng').value = lng; if (name) document.getElementById('hotelName').value = name; if (desc) document.getElementById('hotelDesc').value = desc; }
-  else if (type === 'bonplan') { openBonPlanModal(); document.getElementById('bonPlanLat').value = lat; document.getElementById('bonPlanLng').value = lng; if (name) document.getElementById('bonPlanTitle').value = name; if (desc) document.getElementById('bonPlanDesc').value = desc; }
+  console.log('[quickAdd] Popup closed');
+  if (type === 'spot') {
+    console.log('[quickAdd] Opening spot modal...');
+    openSpotModal();
+    console.log('[quickAdd] Setting spot fields...');
+    const spotLatEl = document.getElementById('spotLat');
+    const spotLngEl = document.getElementById('spotLng');
+    const spotNameEl = document.getElementById('spotName');
+    const spotDescEl = document.getElementById('spotDesc');
+    if (spotLatEl) spotLatEl.value = lat; else console.error('[quickAdd] spotLat element not found');
+    if (spotLngEl) spotLngEl.value = lng; else console.error('[quickAdd] spotLng element not found');
+    if (name && spotNameEl) spotNameEl.value = name; else console.warn('[quickAdd] name is empty or spotName element not found');
+    if (desc && spotDescEl) spotDescEl.value = desc;
+    console.log('[quickAdd] Spot modal opened, lat=' + lat + ', lng=' + lng + ', name=' + (name || '(empty)'));
+  }
+  else if (type === 'hotel') {
+    console.log('[quickAdd] Opening hotel modal...');
+    openHotelModal();
+    console.log('[quickAdd] Setting hotel fields...');
+    const hotelLatEl = document.getElementById('hotelLat');
+    const hotelLngEl = document.getElementById('hotelLng');
+    const hotelNameEl = document.getElementById('hotelName');
+    const hotelDescEl = document.getElementById('hotelDesc');
+    if (hotelLatEl) hotelLatEl.value = lat; else console.error('[quickAdd] hotelLat element not found');
+    if (hotelLngEl) hotelLngEl.value = lng; else console.error('[quickAdd] hotelLng element not found');
+    if (name && hotelNameEl) hotelNameEl.value = name; else console.warn('[quickAdd] name is empty or hotelName element not found');
+    if (desc && hotelDescEl) hotelDescEl.value = desc;
+    console.log('[quickAdd] Hotel modal opened, lat=' + lat + ', lng=' + lng + ', name=' + (name || '(empty)'));
+  }
+  else if (type === 'bonplan') {
+    console.log('[quickAdd] Opening bonplan modal...');
+    openBonPlanModal();
+    console.log('[quickAdd] Setting bonplan fields...');
+    const bpLatEl = document.getElementById('bonPlanLat');
+    const bpLngEl = document.getElementById('bonPlanLng');
+    const bpTitleEl = document.getElementById('bonPlanTitle');
+    const bpDescEl = document.getElementById('bonPlanDesc');
+    if (bpLatEl) bpLatEl.value = lat; else console.error('[quickAdd] bonPlanLat element not found');
+    if (bpLngEl) bpLngEl.value = lng; else console.error('[quickAdd] bonPlanLng element not found');
+    if (name && bpTitleEl) bpTitleEl.value = name; else console.warn('[quickAdd] name is empty or bonPlanTitle element not found');
+    if (desc && bpDescEl) bpDescEl.value = desc;
+    console.log('[quickAdd] BonPlan modal opened, lat=' + lat + ', lng=' + lng + ', name=' + (name || '(empty)'));
+  }
+  else {
+    console.error('[quickAdd] Unknown type:', type);
+  }
 }

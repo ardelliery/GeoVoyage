@@ -162,6 +162,7 @@
         <div class="text-center">
           <span id="travelerDayLabel" class="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block">Lundi 19 Octobre 2026</span>
           <span id="travelerDayDate" class="text-base font-extrabold text-slate-900 dark:text-white block">19/10/2026 (J+0)</span>
+          <span id="travelerSunInfo" class="text-[10px] text-amber-600 dark:text-amber-400 block"></span>
         </div>
         <button onclick="changeTravelerDay(1)" class="p-3 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl active:scale-95 transition"><i class="fa-solid fa-chevron-right text-base"></i></button>
       </div>
@@ -354,7 +355,7 @@
   </div>
 
   <div id="transitModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <form id="transitForm" onsubmit="saveTransit(event)" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-800 dark:text-slate-100 space-y-4">
+    <form id="transitForm" onsubmit="saveTransit(event)" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-slate-800 dark:text-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <h3 id="transitModalTitle" class="text-base font-bold">Éditer le Transit / Déplacement</h3>
       <input type="hidden" id="transitId">
       <div>
@@ -384,6 +385,27 @@
         <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Nombre de nuits à bord</label>
         <input type="number" id="transitNightCount" value="1" min="1" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm text-slate-900 dark:text-white font-mono">
       </div>
+
+      <!-- Point de départ personnalisé (Optionnel) -->
+      <div class="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
+        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Point de départ personnalisé (Optionnel)</label>
+        <input type="text" id="transitFromName" placeholder="Nom du point de départ (ex: Gare de départ)" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="number" step="any" id="transitFromLat" placeholder="Latitude départ" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white">
+          <input type="number" step="any" id="transitFromLng" placeholder="Longitude départ" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white">
+        </div>
+      </div>
+
+      <!-- Point d'arrivée personnalisé (Optionnel) -->
+      <div class="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
+        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Point d'arrivée personnalisé (Optionnel)</label>
+        <input type="text" id="transitToName" placeholder="Nom du point d'arrivée (ex: Port d'arrivée)" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="number" step="any" id="transitToLat" placeholder="Latitude arrivée" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white">
+          <input type="number" step="any" id="transitToLng" placeholder="Longitude arrivée" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white">
+        </div>
+      </div>
+
       <div>
         <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Description / Remarques</label>
         <textarea id="transitDesc" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm text-slate-900 dark:text-white h-20"></textarea>

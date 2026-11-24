@@ -1,0 +1,239 @@
+
+
+# Prompt Gemini — Génération de Voyage
+
+Voici un prompt complet et structuré que vous pouvez copier-coller dans Gemini :
+
+---
+
+## 📋 Prompt Gemini
+
+```
+Tu es un expert en planification de voyages et un développeur frontend. Ta mission est de concevoir un itinéraire de voyage cohérent et de générer un fichier JSON au format précis pour une application de planning de voyage.
+
+═══════════════════════════════════════════════
+📌 CONSIGNES GÉNÉRALES
+═══════════════════════════════════════════════
+
+Règles absolues :
+- Génère un voyage logique avec progression géographique (pas de retour en arrière)
+- Les spots doivent être répartis sur les bonnes journées en fonction des zones/hôtels
+- Les transits doivent relier logiquement les zones entre elles
+- Les coordonnées GPS doivent être réalistes pour la région demandée
+- Les noms doivent être authentiques et réels
+
+═══════════════════════════════════════════════
+📥 ENTRÉES DE L'UTILISATEUR
+═══════════════════════════════════════════════
+
+Région souhaitée : [RÉGION]
+Spots principaux souhaités (optionnel) : [SPOTS]
+Durée approximative (nombre de jours) : [DURÉE]
+Points de départ/arrivée : [VILLE_DE_PARTIE]
+Budget/Type de voyage : [OPTIONNEL]
+
+═══════════════════════════════════════════════
+📤 STRUCTURE JSON ATTENDUE
+═══════════════════════════════════════════════
+
+Voici le format exact attendu. Respecte-le scrupuleusement :
+
+{
+  "viewMode": "designer",
+  "name": "Nom du voyage",
+  "pivotDate": "AAAA-MM-JJ",
+  "currentSelectedDay": 0,
+  "activeTab": "planning",
+  
+  "departurePoint": {
+    "name": "Ville complète avec adresse",
+    "lat": 48.8566,
+    "lng": 2.3522
+  },
+  
+  "arrivalPoint": {
+    "name": "Ville complète avec adresse",
+    "lat": 48.8566,
+    "lng": 2.3522
+  },
+  
+  "zones": [
+    {
+      "id": "z_nom_zone",
+      "name": "Nom de la zone",
+      "desc": "Description courte",
+      "color": "#HEXCODE"
+    }
+  ],
+  
+  "hotels": [
+    {
+      "id": "h_nom_hotel",
+      "name": "Nom réel de l'hôtel",
+      "zoneId": "z_nom_zone",
+      "desc": "Description optionnelle",
+      "nights": 3,
+      "lat": 43.2965,
+      "lng": 5.3698,
+      "radiusKm": 50,
+      "url": ""
+    }
+  ],
+  
+  "customTransits": [
+    {
+      "id": "transit_dep_first",
+      "name": "Transit Départ ➔ Zone 1",
+      "mode": "Voiture",
+      "desc": "",
+      "isNightTransit": false,
+      "nightCount": 1,
+      "fromPoint": null,
+      "toPoint": null
+    }
+  ],
+  
+  "spots": [
+    {
+      "id": "spot_nom_spot",
+      "name": "Nom réel du spot",
+      "lat": 43.2965,
+      "lng": 5.3698,
+      "desc": "Description du spot",
+      "url": "",
+      "parentId": null,
+      "imageBase64": null,
+      "target": null
+    }
+  ],
+  
+  "bonsPlans": [
+    {
+      "id": "bp_nom_bp",
+      "title": "Nom du bon plan",
+      "category": "Restaurant|Conseil pratique|Activité|Autre",
+      "target": null,
+      "lat": 43.2965,
+      "lng": 5.3698,
+      "desc": "Description"
+    }
+  ],
+  
+  "dailyItineraries": {
+    "1": ["spot_id_1", "spot_id_2"],
+    "2": ["spot_id_3"]
+  },
+  
+  "dailyBonsPlans": {
+    "1": ["bp_id_1"]
+  },
+  
+  "transitSpotOrder": {
+    "transit_dep_first": ["spot_id"]
+  },
+  
+  "mapFocusMode": false,
+  "isCacheStale": true
+}
+
+═══════════════════════════════════════════════
+📐 RÈGLES DE GÉNÉRATION
+═══════════════════════════════════════════════
+
+1. ZONES :
+   - Crée une zone par ville/région principale visitée
+   - Ordre géographique logique du voyage
+   - Couleurs distinctes et agréables (palette harmonieuse)
+   - IDs au format "z_nom_zone" (uniquement minuscules, underscores)
+
+2. HÔTELS :
+   - 1 hôtel par zone (minimum)
+   - "nights" = nombre de nuits passées dans la zone
+   - lat/lng = coordonnées réelles de l'hôtel
+   - radiusKm = 30 à 50 km
+
+3. SPOTS :
+   - 3 à 6 spots par zone
+   - Nom réaliste, description courte
+   - lat/lng réels et cohérents avec la zone
+   - "target": null pour les spots de journée
+   - IDs au format "spot_nom"
+
+4. BONS PLANS :
+   - 1 à 3 par zone (restaurants, conseils, activités)
+   - Catégorie réaliste
+   - lat/lng cohérents
+
+5. TRANSITS :
+   - "transit_dep_first" : départ vers la première zone
+   - Transits inter-zones : "transit_z_zone1_z_zone2"
+   - "transit_last_arr" : retour final
+   - mode : "Voiture" par défaut
+   - isNightTransit : false par défaut
+   - isNightTransit : true uniquement si le voyage le justifie
+
+6. DAILY ITINERARIES :
+   - "1" = J+1 (jour 1 du voyage)
+   - Chaque jour liste les spots visités
+   - Respecte l'ordre chronologique logique
+   - Les spots d'un transit ont "target": "transit_dep_first"
+
+7. TRANSIT SPOT ORDER :
+   - Liste l'ordre des spots visités pendant chaque transit
+
+═══════════════════════════════════════════════
+🎯 EXEMPLE DE DEMANDE
+═══════════════════════════════════════════════
+
+"Région souhaitée : Provence-Alpes-Côte d'Azur
+Spots principaux : Vallée de la Lavande, Gorges du Verdon, Île de Port-Cros
+Durée : 7 jours
+Point de départ : Paris
+Type : Nature et paysages"
+
+═══════════════════════════════════════════════
+📤 SORTIE ATTENDUE
+═══════════════════════════════════════════════
+
+Réponds uniquement avec :
+1. Un résumé court du voyage conçu (2-3 phrases)
+2. Le JSON complet entre balises ```json et ```
+
+NE RENDS PAS DE TEXTE SUPPLÉMENTAIRE après le JSON.
+
+Commence maintenant en me demandant les détails du voyage souhaité.
+```
+
+---
+
+## 💡 Conseils d'utilisation
+
+**Variables à remplacer avant d'envoyer :**
+
+| Placeholder | Exemple |
+|---|---|
+| `[RÉGION]` | `Corse du Sud`, `Bretagne`, `Alsace` |
+| `[SPOTS]` | `Calanques de Piana, Bonifacio, Corte` |
+| `[DURÉE]` | `5 jours`, `10 jours`, `2 semaines` |
+| `[VILLE_DE_PARTIE]` | `Paris`, `Lyon`, `Marseille` |
+| `[OPTIONNEL]` | `Road trip`, `Famille avec enfants`, `Aventure` |
+
+**Exemples de prompts performants :**
+
+```
+Région : Savoie / Haute-Savoie
+Spots : Lac du Bourget, Col du Télégraphe, Mer de Glace, Annapurnas
+Durée : 6 jours
+Départ : Lille
+Type : Montagne et lacs
+```
+
+```
+Région : Bretagne Côtière
+Spots : Pointe du Raz, Saint-Malo, Carnac, Concarneau
+Durée : 5 jours
+Départ : Bruxelles
+Type : Route côtière en famille
+```
+
+Le prompt est volontairement détaillé car Gemini a besoin de comprendre la structure JSON exacte. Une fois que vous avez le JSON généré, vous pouvez l'enregistrer en `.json` et l'importer dans votre application GeoVoyage.

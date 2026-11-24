@@ -1,3 +1,8 @@
+/* ==========================================================================
+   GeoVoyage - Gestion de l'Interface Utilisateur (ui.js)
+   Version complète avec prise en charge des transits de nuit (isNightTransit & fromPoint/toPoint)
+   ========================================================================== */
+
 /**
  * Purge le cache des itinéraires OSRM et relance le calcul manuellement sur action de l'utilisateur
  */
@@ -78,9 +83,42 @@ function toggleTheme() {
   }
 }
 
+// === Fonctions d'initialisation UI (doivent être définies avant window.onload) ===
+function switchLeftTab(tab) {
+  appState.activeTab = tab;
+  ['Structure', 'Planning', 'AllSpots'].forEach(t => {
+    const content = document.getElementById(`tabContent${t}`);
+    const btn = document.getElementById(`tabBtn${t}`);
+    if (content) content.classList.add('hidden');
+    if (btn) btn.className = 'flex-1 py-2.5 text-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200';
+  });
+
+  if (tab === 'structure') {
+    document.getElementById('tabContentStructure')?.classList.remove('hidden');
+    const btn = document.getElementById('tabBtnStructure');
+    if (btn) btn.className = 'flex-1 py-2.5 text-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500 font-semibold';
+    renderStructureUI();
+  } else if (tab === 'planning') {
+    document.getElementById('tabContentPlanning')?.classList.remove('hidden');
+    const btn = document.getElementById('tabBtnPlanning');
+    if (btn) btn.className = 'flex-1 py-2.5 text-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500 font-semibold';
+    renderPlanningUI();
+  } else {
+    document.getElementById('tabContentAllSpots')?.classList.remove('hidden');
+    const btn = document.getElementById('tabBtnAllSpots');
+    if (btn) btn.className = 'flex-1 py-2.5 text-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500 font-semibold flex items-center justify-center space-x-1.5';
+    renderAllSpotsUI();
+  }
+
+  setTimeout(() => { if (map) { map.invalidateSize(); renderMapMarkers(); } }, 150);
+  renderTimelineHeader();
+}
+
+function openCoherenceModal() { openModal('coherenceModal'); }
+
 window.onload = async function() {
   updateThemeUI();
-  loadFromLocalStorage();
+  await loadFromLocalStorage();
   
   const tripNameInput = document.getElementById('tripNameInput');
   if (tripNameInput) {
@@ -98,11 +136,15 @@ window.onload = async function() {
       appState.pivotDate = e.target.value;
       invalidateRouteCache();
       renderApp();
+      saveToLocalStorage();
     });
   }
 
-  const initialLat = appState.zones.length > 0 ? (appState.hotels[0]?.lat || 48.591) : 48.591;
-  const initialLng = appState.zones.length > 0 ? (appState.hotels[0]?.lng || 2.217) : 2.217;
+  const firstZoneAnchor = (appState.zones.length > 0 && typeof getZoneAnchorPoint === 'function')
+    ? getZoneAnchorPoint(appState.zones[0].id)
+    : (appState.hotels[0] || null);
+  const initialLat = firstZoneAnchor ? firstZoneAnchor.lat : 48.591;
+  const initialLng = firstZoneAnchor ? firstZoneAnchor.lng : 2.217;
 
   map = L.map('map').setView([initialLat, initialLng], 7);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -174,6 +216,27 @@ window.onload = async function() {
       renderMapMarkers();
     }
   }, 300);
+
+  // ==========================================
+  // AUTO-SAVE PÉRIODIQUE (toutes les 5 secondes)
+  // ==========================================
+  let autoSaveInterval = setInterval(() => {
+    if (typeof saveToLocalStorage === 'function') {
+      saveToLocalStorage();
+    }
+  }, 5000);
+
+  // ==========================================
+  // SAUVEGARDE AVANT FERMETURE DU NAVIGATEUR
+  // ==========================================
+  window.addEventListener('beforeunload', () => {
+    if (typeof saveToLocalStorage === 'function') {
+      saveToLocalStorage();
+    }
+    if (typeof clearInterval === 'function' && autoSaveInterval) {
+      clearInterval(autoSaveInterval);
+    }
+  });
 };
 
 function switchViewMode(mode) {
@@ -309,6 +372,20 @@ function moveZoneOrder(index, direction) {
   cleanOrphanTransitsAndTargets();
   invalidateRouteCache();
   renderApp();
+  saveToLocalStorage();
+}
+
+function renderTransitEndpointsSummary(transit) {
+  if (!transit || (!transit.fromPoint && !transit.toPoint)) return '';
+  const parts = [];
+  if (transit.fromPoint && transit.fromPoint.name) {
+    parts.push(`<span><i class="fa-solid fa-location-dot text-emerald-500 mr-1"></i><strong>De :</strong> ${transit.fromPoint.name}</span>`);
+  }
+  if (transit.toPoint && transit.toPoint.name) {
+    parts.push(`<span><i class="fa-solid fa-flag-checkered text-indigo-500 mr-1"></i><strong>À :</strong> ${transit.toPoint.name}</span>`);
+  }
+  if (parts.length === 0) return '';
+  return `<div class="text-[11px] text-slate-600 dark:text-slate-300 flex flex-wrap gap-x-3 gap-y-1 bg-white/60 dark:bg-slate-900/60 px-2 py-1 rounded border border-slate-200/70 dark:border-slate-800">${parts.join('')}</div>`;
 }
 
 function renderTravelerUI() {
@@ -321,6 +398,7 @@ function renderTravelerUI() {
   if (dayLabel) dayLabel.innerText = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
   if (dayDate) dayDate.innerText = `${shortDate} (J+${curDay})`;
 
+  // === HEURES LEVER/COUCHER SOLEIL ===
   const dayRoute = calculateDayRoute(curDay);
   const computed = getZoneComputedDates();
   const currentZone = appState.zones.find(z => {
@@ -328,6 +406,17 @@ function renderTravelerUI() {
     return comp && curDay >= comp.checkinDay && curDay <= comp.checkoutDay;
   });
   const activeHotel = dayRoute.activeHotel;
+  const dateStr = deltaToDateStr(curDay);
+  const sunRise = (dayRoute.originPoint && dateStr) ? getSunTimes(dayRoute.originPoint.lat, dayRoute.originPoint.lng, dateStr) : null;
+  const sunSet = (dayRoute.destPoint && dateStr) ? getSunTimes(dayRoute.destPoint.lat, dayRoute.destPoint.lng, dateStr) : null;
+  const sunEl = document.getElementById('travelerSunInfo');
+  if (sunEl) {
+    if (sunRise && !sunRise.error) {
+      sunEl.innerHTML = `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneOffset}h)</span>`;
+    } else {
+      sunEl.innerHTML = '';
+    }
+  }
 
   const transits = getTransits().filter(t => t.day === curDay);
   const activeTransit = transits.length > 0 ? transits[0] : null;
@@ -336,14 +425,20 @@ function renderTravelerUI() {
   if (banner) {
     if (activeTransit && activeTransit.isNightTransit) {
       const modeIcon = getTransitModeIcon(activeTransit.mode);
+      const tCalc = calculateTransitDistances(activeTransit);
       banner.className = 'p-4 rounded-2xl border text-sm bg-amber-500/10 dark:bg-amber-950/40 border-amber-400 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 shadow-md space-y-2';
       banner.innerHTML = `
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between flex-wrap gap-2">
           <span class="font-bold flex items-center gap-1.5">
             <span class="text-base">${modeIcon}</span> 🛌 Transport de nuit (${activeTransit.nightCount || 1} nuit(s) à bord)
           </span>
           <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">${activeTransit.name}</span>
         </div>
+        ${(tCalc.originPoint || tCalc.destPoint) ? `
+          <div class="text-xs flex flex-wrap gap-x-4 gap-y-1 text-amber-800 dark:text-amber-200">
+            ${tCalc.originPoint ? `<span><strong>De :</strong> ${tCalc.originPoint.name}</span>` : ''}
+            ${tCalc.destPoint ? `<span><strong>À :</strong> ${tCalc.destPoint.name}</span>` : ''}
+          </div>` : ''}
         ${activeTransit.desc ? `
           <div class="pt-2 border-t border-amber-300 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-200">
             <i class="fa-solid fa-clipboard-list mr-1.5"></i><strong>Réservation & Infos :</strong>
@@ -351,6 +446,7 @@ function renderTravelerUI() {
           </div>` : ''}
       `;
     } else if (currentZone) {
+      const zoneAnchor = (!activeHotel && typeof getZoneAnchorPoint === 'function') ? getZoneAnchorPoint(currentZone.id) : null;
       banner.className = 'p-4 rounded-2xl border text-sm bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-200 shadow-md space-y-2';
       banner.innerHTML = `
         <div class="flex items-center justify-between">
@@ -367,7 +463,17 @@ function renderTravelerUI() {
               <a href="${getGoogleMapsUrl(activeHotel.lat, activeHotel.lng)}" target="_blank" class="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">Maps</a>
               <a href="${getGeoUrl(activeHotel.lat, activeHotel.lng)}" target="_blank" class="bg-sky-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">GPS</a>
             </div>
-          </div>` : ''}
+          </div>` : (zoneAnchor ? `
+          <div class="pt-2 border-t border-indigo-200 dark:border-indigo-900/60 flex items-center justify-between text-xs">
+            <div>
+              <i class="fa-solid fa-location-dot text-indigo-500 mr-1.5"></i><strong>Point de repère secteur :</strong> ${zoneAnchor.name}
+            </div>
+            <div class="flex space-x-2 shrink-0">
+              <button onclick="centerMapOnCoords(${zoneAnchor.lat}, ${zoneAnchor.lng})" class="bg-indigo-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">Centrer</button>
+              <a href="${getGoogleMapsUrl(zoneAnchor.lat, zoneAnchor.lng)}" target="_blank" class="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">Maps</a>
+              <a href="${getGeoUrl(zoneAnchor.lat, zoneAnchor.lng)}" target="_blank" class="bg-sky-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">GPS</a>
+            </div>
+          </div>` : '')}
       `;
     } else {
       banner.className = 'p-4 rounded-2xl border text-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 shadow-md';
@@ -386,6 +492,7 @@ function renderTravelerUI() {
     routeContainer.innerHTML = '<p class="text-sm text-slate-500 italic py-4 text-center">Aucune étape enregistrée pour cette journée.</p>';
   } else {
     if (activeTransit) {
+      const tCalc = calculateTransitDistances(activeTransit);
       const transitEl = document.createElement('div');
       transitEl.className = 'bg-amber-500/10 dark:bg-amber-950/30 border border-amber-400/60 dark:border-amber-800/50 rounded-2xl p-4 space-y-2 shadow-sm';
       transitEl.innerHTML = `
@@ -395,7 +502,18 @@ function renderTravelerUI() {
           </span>
           ${activeTransit.isNightTransit ? '<span class="text-xs bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full font-bold">🛌 Nuit à bord</span>' : ''}
         </div>
+        ${(tCalc.originPoint || tCalc.destPoint) ? `
+          <div class="text-xs text-amber-900 dark:text-amber-200 flex flex-wrap gap-x-4 gap-y-1">
+            ${tCalc.originPoint ? `<span><strong>De :</strong> ${tCalc.originPoint.name}</span>` : ''}
+            ${tCalc.destPoint ? `<span><strong>À :</strong> ${tCalc.destPoint.name}</span>` : ''}
+          </div>` : ''}
         ${activeTransit.desc ? `<p class="text-xs text-amber-800 dark:text-amber-100 whitespace-pre-line font-mono bg-white/40 dark:bg-slate-900/40 p-2 rounded-xl border border-amber-200/50 dark:border-amber-800/30">${activeTransit.desc}</p>` : ''}
+        ${tCalc.destPoint ? `
+          <div class="flex space-x-2 pt-2 border-t border-amber-200/60 dark:border-amber-800/40">
+            <button onclick="centerMapOnCoords(${tCalc.destPoint.lat}, ${tCalc.destPoint.lng})" class="py-1.5 px-3 bg-indigo-600 text-white rounded-xl text-xs font-semibold flex items-center justify-center shadow"><i class="fa-solid fa-crosshairs mr-1"></i> Arrivée</button>
+            <a href="${getGoogleMapsUrl(tCalc.destPoint.lat, tCalc.destPoint.lng)}" target="_blank" class="flex-1 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold flex items-center justify-center shadow"><i class="fa-solid fa-location-arrow mr-1.5"></i> Maps Arrivée</a>
+            <a href="${getGeoUrl(tCalc.destPoint.lat, tCalc.destPoint.lng)}" target="_blank" class="flex-1 py-1.5 bg-sky-600 text-white rounded-xl text-xs font-semibold flex items-center justify-center shadow"><i class="fa-solid fa-compass mr-1.5"></i> GPS Arrivée</a>
+          </div>` : ''}
       `;
       routeContainer.appendChild(transitEl);
     }
@@ -498,6 +616,7 @@ function changeTravelerDay(delta) {
   if (nextDay >= 0 && nextDay < getTotalDays()) {
     appState.currentSelectedDay = nextDay;
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -506,269 +625,544 @@ function renderStructureUI() {
   if (!container) return;
   container.innerHTML = '';
 
-  const depTransit = getTransits().find(t => t.id === 'transit_dep_first');
-  const depTransitCalc = depTransit ? calculateTransitDistances(depTransit) : null;
-  const isDepRoad = depTransit ? isRoadTransitMode(depTransit.mode, depTransit.isNightTransit) : true;
-  const depRouteInfo = (depTransitCalc && isDepRoad) ? getEffectiveDistanceAndDuration(depTransit.id, depTransitCalc.totalDist) : null;
-
-  const depTransitSpots = appState.spots.filter(s => s.target === 'transit_dep_first');
-  const depTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_dep_first');
-
-  const depEl = document.createElement('div');
-  depEl.id = `card-endpoint-departure`;
-  depEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 shadow-sm';
-  
-  let depTransitSpotsHtml = depTransitSpots.length > 0 ? depTransitSpots.map((s, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
-      <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${idx + 1}) ${s.name}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-      </div>
-    </div>
-  `).join('') : '';
-
-  let depTransitBpsHtml = depTransitBps.length > 0 ? depTransitBps.map((bp, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
-      <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})">(${idx + 1}) ${bp.title}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-      </div>
-    </div>
-  `).join('') : '';
-
-  depEl.innerHTML = `
-    <div class="flex items-center justify-between">
-      <div class="truncate cursor-pointer" onclick="centerMapOnCoords(${appState.departurePoint.lat}, ${appState.departurePoint.lng})">
-        <h4 class="font-bold text-sm text-slate-900 dark:text-white flex items-center"><i class="fa-solid fa-flag-checkered text-emerald-500 mr-2"></i>${appState.departurePoint.name}</h4>
-        <p class="text-xs text-slate-500 dark:text-slate-400 font-mono">${appState.departurePoint.lat.toFixed(3)}, ${appState.departurePoint.lng.toFixed(3)}</p>
-      </div>
-      <div class="flex items-center space-x-1">
-        <button onclick="centerMapOnCoords(${appState.departurePoint.lat}, ${appState.departurePoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="openEndpointModal('departure')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-      </div>
-    </div>
-    ${depTransit ? `
-      <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-        <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
-          <span>${getTransitModeIcon(depTransit.mode)} ${depTransit.name} (${depTransit.mode || 'Voiture'})</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-mono">
-            ${depRouteInfo && depRouteInfo.isOsrm 
-              ? `🚗 ${depRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(depRouteInfo.durationMin)})` 
-              : `${depTransitCalc ? depTransitCalc.totalDist.toFixed(1) : 0} km`}
-          </span>
-        </div>
-        ${depTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${depTransitSpotsHtml}</div>` : ''}
-        ${depTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${depTransitBpsHtml}</div>` : ''}
-        <div class="text-right pt-1">
-          <button onclick="editTransitModal('${depTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
-        </div>
-      </div>
-    ` : ''}
-  `;
-  container.appendChild(depEl);
-
+  const totalDays = getTotalDays();
   const computedDates = getZoneComputedDates();
+  const transits = getTransits();
+  const totalDist = calculateTotalTripDistance();
+  const j0Date = appState.pivotDate
+    ? new Date(appState.pivotDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'Date non définie';
 
-  appState.zones.forEach((zone, index) => {
+  // === BILAN GLOBAL ===
+  const bilanEl = document.createElement('div');
+  bilanEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-sm';
+  bilanEl.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center">
+        <i class="fa-solid fa-chart-pie mr-2 text-indigo-500"></i>Bilan global
+      </h3>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs">
+      <div class="bg-indigo-50 dark:bg-indigo-950/50 rounded-lg p-2 text-center">
+        <div class="font-bold text-indigo-600 dark:text-indigo-400 text-base">${totalDays}</div>
+        <div class="text-slate-500 dark:text-slate-400">jours</div>
+      </div>
+      <div class="bg-emerald-50 dark:bg-emerald-950/50 rounded-lg p-2 text-center">
+        <div class="font-bold text-emerald-600 dark:text-emerald-400 text-base">${totalDist.toFixed(0)}</div>
+        <div class="text-slate-500 dark:text-slate-400">km total</div>
+      </div>
+      <div class="bg-blue-50 dark:bg-blue-950/50 rounded-lg p-2 text-center">
+        <div class="font-bold text-blue-600 dark:text-blue-400 text-base">${appState.zones.length}</div>
+        <div class="text-slate-500 dark:text-slate-400">zones</div>
+      </div>
+      <div class="bg-purple-50 dark:bg-purple-950/50 rounded-lg p-2 text-center">
+        <div class="font-bold text-purple-600 dark:text-purple-400 text-base">${appState.hotels.length}</div>
+        <div class="text-slate-500 dark:text-slate-400">hôtels</div>
+      </div>
+    </div>
+    <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 text-center">${j0Date}</div>
+  `;
+  container.appendChild(bilanEl);
+
+
+  // === CHRONOLOGIE PAR ZONE ===
+  const chronoEl = document.createElement('div');
+  chronoEl.className = 'space-y-3';
+
+  // Déterminer le dernier jour affecté aux zones
+  let lastZoneDay = 0;
+  for (const zone of appState.zones) {
+    const comp = computedDates[zone.id];
+    if (comp && comp.checkoutDay > lastZoneDay) {
+      lastZoneDay = comp.checkoutDay;
+    }
+  }
+
+  // === BLOC PAR ZONE ===
+  appState.zones.forEach((zone, zoneIdx) => {
     const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0 };
-    const checkinDate = deltaToDateStr(comp.checkinDay);
-    const checkoutDate = deltaToDateStr(comp.checkoutDay);
-    const zoneDist = calculateZoneTotalDistance(zone);
-    const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
+    const zoneColor = zone.color || '#6366f1';
 
-    let zoneSpots = [];
-    let zoneBps = [];
-    for (let d = comp.checkinDay; d <= comp.checkoutDay; d++) {
-      (appState.dailyItineraries[d] || []).forEach(sId => {
-        const s = appState.spots.find(x => x.id === sId);
-        if (s && !zoneSpots.some(x => x.spot.id === s.id)) zoneSpots.push({ spot: s, day: d });
-      });
-      (appState.dailyBonsPlans[d] || []).forEach(bpId => {
-        const bp = appState.bonsPlans.find(x => x.id === bpId);
-        if (bp && !zoneBps.some(x => x.bonPlan.id === bp.id)) zoneBps.push({ bonPlan: bp, day: d });
-      });
-    }
+    const zoneBlock = document.createElement('div');
+    zoneBlock.className = 'bg-white dark:bg-slate-950 rounded-xl shadow-sm overflow-hidden';
 
-    let zoneSpotsHtml = zoneSpots.length > 0 ? zoneSpots.map((item, idx) => `
-      <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
-        <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})">(${idx + 1}) ${item.spot.name}</span>
-        <div class="flex items-center space-x-1 shrink-0">
-          <button onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-          <button onclick="editSpot('${item.spot.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-          <button onclick="detachSpotFromDay(${item.day}, '${item.spot.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-        </div>
+    const zoneHeader = document.createElement('div');
+    zoneHeader.className = 'px-3 py-2.5 cursor-pointer hover:opacity-80 transition flex items-center justify-between';
+    zoneHeader.onclick = () => { jumpToDay(comp.checkinDay); switchLeftTab('planning'); };
+    zoneHeader.innerHTML = `
+      <div class="flex items-center space-x-2">
+        <span class="w-3.5 h-3.5 rounded-full shrink-0" style="background:${zoneColor}"></span>
+        <span class="font-bold text-sm text-slate-800 dark:text-slate-200">${zone.name}</span>
+        <span class="text-[11px] text-slate-500 dark:text-slate-400">J+${comp.checkinDay} → J+${comp.checkoutDay}</span>
       </div>
-    `).join('') : '';
-
-    let zoneBpsHtml = zoneBps.length > 0 ? zoneBps.map((item, idx) => `
-      <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
-        <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})">(${idx + 1}) ${item.bonPlan.title}</span>
-        <div class="flex items-center space-x-1 shrink-0">
-          <button onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-          <button onclick="editBonPlan('${item.bonPlan.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-          <button onclick="detachBonPlanFromDay(${item.day}, '${item.bonPlan.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-        </div>
-      </div>
-    `).join('') : '';
-
-    const zoneEl = document.createElement('div');
-    zoneEl.id = `card-zone-${zone.id}`;
-    zoneEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3 shadow-sm';
-    
-    let html = `
-      <div class="border-b border-slate-200 dark:border-slate-800 pb-3" style="border-left: 4px solid ${zone.color}">
-        <div class="pl-2 space-y-1">
-          <div class="flex items-center justify-between">
-            <h4 class="font-bold text-sm text-slate-900 dark:text-white">${zone.name}</h4>
-            <div class="flex items-center space-x-1 shrink-0">
-              ${index > 0 ? `<button onclick="moveZoneOrder(${index}, -1)" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition" title="Monter"><i class="fa-solid fa-arrow-up text-xs"></i></button>` : ''}
-              ${index < appState.zones.length - 1 ? `<button onclick="moveZoneOrder(${index}, 1)" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition" title="Descendre"><i class="fa-solid fa-arrow-down text-xs"></i></button>` : ''}
-              <button onclick="editZone('${zone.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button onclick="deleteZone('${zone.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded transition" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
-          </div>
-          <div class="cursor-pointer hover:opacity-80 inline-block transition" onclick="jumpToDay(${comp.checkinDay})" title="Cliquer pour aller au premier jour J+${comp.checkinDay} dans le planning">
-            <span class="text-xs text-indigo-600 dark:text-indigo-300 font-mono font-bold bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60 flex items-center w-fit">
-              <i class="fa-solid fa-calendar-days mr-1.5 text-indigo-500 dark:text-indigo-400"></i>J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${comp.nights} nuit(s)) <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
-            </span>
-          </div>
-          <div class="flex items-center space-x-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap pt-1">
-            <span>🗓️ ${checkinDate} au ${checkoutDate}</span>
-            <span class="text-emerald-600 dark:text-emerald-400 font-mono">📍 Bilan secteur : ${zoneDist.toFixed(1)} km</span>
-          </div>
-        </div>
-      </div>
-
-      ${zoneSpots.length > 0 ? `<div class="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg"><span class="text-xs font-semibold text-slate-500 dark:text-slate-400 block">Spots programmés :</span>${zoneSpotsHtml}</div>` : ''}
-      ${zoneBps.length > 0 ? `<div class="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg"><span class="text-xs font-semibold text-slate-500 dark:text-slate-400 block">Bons plans du secteur :</span>${zoneBpsHtml}</div>` : ''}
-
-      <div class="space-y-2">
-        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400">Hébergements de la zone</div>
+      <span class="text-[11px] text-slate-500 dark:text-slate-400">${comp.nights} nuit${comp.nights > 1 ? 's' : ''}</span>
     `;
+    zoneBlock.appendChild(zoneHeader);
 
-    if (zoneHotels.length === 0) {
-      html += `<div class="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
-        <span><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Aucun hébergement (0 nuit) !</span>
-        <button onclick="openHotelModal()" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">+ Hébergement</button>
-      </div>`;
-    } else {
-      zoneHotels.forEach(h => {
-        html += `
-          <div id="card-hotel-${h.id}" class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
-            <div class="truncate cursor-pointer hover:opacity-80" onclick="centerMapOnCoords(${h.lat}, ${h.lng})">
-              <span class="text-slate-900 dark:text-white font-semibold flex items-center"><i class="fa-solid fa-hotel text-blue-500 dark:text-blue-400 mr-1.5"></i>${h.name}</span>
-              <span class="text-slate-500 dark:text-slate-400 block truncate">${h.nights || 0} nuit(s) • Rayon : ${h.radiusKm || 50} km</span>
-              ${h.desc ? `<span class="text-slate-600 dark:text-slate-300 block italic truncate mt-0.5 text-[11px]">${h.desc}</span>` : ''}
-            </div>
-            <div class="flex items-center space-x-1 shrink-0 ml-2">
-              <button onclick="centerMapOnCoords(${h.lat}, ${h.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-              <button onclick="editHotel('${h.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button onclick="deleteHotel('${h.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded transition" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
-          </div>
-        `;
-      });
-    }
+    const daysContent = document.createElement('div');
+    daysContent.className = 'p-2.5 pt-0 space-y-2';
 
-    html += `</div>`;
+    for (let day = comp.checkinDay; day <= comp.checkoutDay; day++) {
+      const dateStr = deltaToDateStr(day);
+      const shortDate = deltaToShortDateStr(day);
+      const dayRoute = calculateDayRoute(day);
+      const daySpotIds = appState.dailyItineraries[day] || [];
+      const dayBpIds = appState.dailyBonsPlans[day] || [];
+      const daySpots = daySpotIds.map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
+      const dayBps = dayBpIds.map(id => appState.bonsPlans.find(bp => bp.id === id)).filter(Boolean);
+      const dayTransits = dayRoute.transits || [];
+      const activeHotel = dayRoute.activeHotel;
 
-    const nextTransitId = index < appState.zones.length - 1 ? `transit_${zone.id}_${appState.zones[index+1].id}` : null;
-    const nextTransit = nextTransitId ? getTransits().find(t => t.id === nextTransitId) : null;
-    const nextTransitCalc = nextTransit ? calculateTransitDistances(nextTransit) : null;
-    const isNextRoad = nextTransit ? isRoadTransitMode(nextTransit.mode, nextTransit.isNightTransit) : true;
-    const nextRouteInfo = (nextTransitCalc && isNextRoad) ? getEffectiveDistanceAndDuration(nextTransit.id, nextTransitCalc.totalDist) : null;
-    const nextTransitSpots = nextTransit ? appState.spots.filter(s => s.target === nextTransit.id) : [];
+      const isRoadDay = !dayTransits.some(t => !isRoadTransitMode(t.mode, t.isNightTransit));
+      const dayRouteInfo = isRoadDay || dayTransits.length === 0
+        ? getEffectiveDistanceAndDuration(`day_${day}`, dayRoute.totalDist)
+        : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
+      const dayDurStr = dayRouteInfo.durationMin ? ` ~${formatDuration(dayRouteInfo.durationMin)}` : '';
+      const dayDistDisplay = dayRouteInfo.isOsrm
+        ? `🚗 ${dayRouteInfo.distanceKm.toFixed(1)} km${dayDurStr}`
+        : `${dayRouteInfo.distanceKm.toFixed(1)} km`;
 
-    if (nextTransit) {
-      html += `
-        <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-          <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
-            <span>${getTransitModeIcon(nextTransit.mode)} ${nextTransit.name} (${nextTransit.mode || 'Voiture'})</span>
-            <span class="text-emerald-600 dark:text-emerald-400 font-mono">
-              ${nextRouteInfo && nextRouteInfo.isOsrm 
-                ? `🚗 ${nextRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(nextRouteInfo.durationMin)})` 
-                : `${nextTransitCalc ? nextTransitCalc.totalDist.toFixed(1) : 0} km`}
-            </span>
-          </div>
-          ${nextTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots en transit :</span>${nextTransitSpots.map((s, sIdx) => `<div class="flex items-center justify-between py-0.5 px-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800"><span class="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${sIdx + 1}) ${s.name}</span><div class="flex space-x-1"><button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="text-emerald-600 dark:text-emerald-400 p-1" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button><button onclick="editSpot('${s.id}')" class="text-indigo-600 dark:text-indigo-400 p-1"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`).join('')}</div>` : ''}
-          <div class="text-right pt-1">
-            <button onclick="editTransitModal('${nextTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
-          </div>
+      // === HEURES LEVER/COUCHER SOLEIL ===
+      const sunrisePoint = dayRoute.originPoint;
+      const sunsetPoint = dayRoute.destPoint;
+      const sunRise = (sunrisePoint && dateStr) ? getSunTimes(sunrisePoint.lat, sunrisePoint.lng, dateStr) : null;
+      const sunSet = (sunsetPoint && dateStr) ? getSunTimes(sunsetPoint.lat, sunsetPoint.lng, dateStr) : null;
+      const sunInfo = (sunRise && !sunRise.error) ? `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneOffset}h)</span>` : '';
+
+      const dayCard = document.createElement('div');
+      dayCard.className = 'bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/60 rounded-lg overflow-hidden';
+
+      const dayHeader = document.createElement('div');
+      dayHeader.className = 'flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900/80 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition';
+      dayHeader.onclick = (e) => { if (e.target.closest('button')) return; jumpToDay(day); switchLeftTab('planning'); };
+      dayHeader.innerHTML = `
+        <div class="flex items-center space-x-1.5 text-xs">
+          <i class="fa-solid fa-calendar-day text-slate-400"></i>
+          <span class="font-semibold text-slate-700 dark:text-slate-200">J+${day}</span>
+          <span class="text-slate-500 dark:text-slate-400">${shortDate}</span>
+        </div>
+        <div class="flex items-center space-x-1.5">
+          ${sunInfo ? `<span class="text-[10px] text-amber-600 dark:text-amber-400">${sunInfo}</span>` : ''}
+          <span class="text-[11px] font-mono ${dayRouteInfo.isOsrm ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-slate-400'}">${dayDistDisplay}</span>
+          <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
         </div>
       `;
+      dayCard.appendChild(dayHeader);
+
+      const dayBody = document.createElement('div');
+      dayBody.className = 'px-2.5 py-1.5 space-y-1.5';
+      let hasContent = false;
+      // --- Bloc Transit ---
+      if (dayTransits.length > 0) {
+        hasContent = true;
+        dayTransits.forEach((t) => {
+          const tCalc = calculateTransitDistances(t);
+          const isRoad = isRoadTransitMode(t.mode, t.isNightTransit);
+          const transitBps = appState.bonsPlans.filter(bp => bp.target === t.id);
+          const transitSpotIds = appState.transitSpotOrder && appState.transitSpotOrder[t.id]
+            ? appState.transitSpotOrder[t.id].map(id => appState.spots.find(s => s.id === id)).filter(Boolean)
+            : [];
+          const tRouteInfo = isRoad
+            ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist)
+            : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
+          const tDurStr = tRouteInfo.durationMin ? ` ~${formatDuration(tRouteInfo.durationMin)}` : '';
+          const tDistDisplay = tRouteInfo.isOsrm
+            ? `${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}`
+            : `${tCalc.totalDist.toFixed(1)} km`;
+
+          const tEl = document.createElement('div');
+          tEl.className = 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-2 space-y-1.5';
+
+          let tInner = `
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-1.5">
+                <span class="text-sm">${getTransitModeIcon(t.mode)}</span>
+                <span class="font-semibold text-xs text-amber-900 dark:text-amber-200">${t.name}</span>
+              </div>
+              <span class="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">${tDistDisplay}</span>
+            </div>
+          `;
+          if (t.isNightTransit) {
+            tInner += `<div class="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded inline-block"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord${t.nightCount > 1 ? ' (' + t.nightCount + ' nuits)' : ''}</div>`;
+          }
+          if (tCalc.originPoint) {
+            tInner += `<div class="text-[10px] text-slate-600 dark:text-slate-400"><span class="cursor-pointer hover:underline" onclick="event.stopPropagation();centerMapOnCoords(${tCalc.originPoint.lat},${tCalc.originPoint.lng})"><i class="fa-solid fa-circle-dot text-emerald-500"></i> ${tCalc.originPoint.name || 'Départ'}</span> <i class="fa-solid fa-arrow-right text-[9px]"></i> <span class="cursor-pointer hover:underline" onclick="event.stopPropagation();centerMapOnCoords(${tCalc.destPoint ? tCalc.destPoint.lat : tCalc.originPoint.lat},${tCalc.destPoint ? tCalc.destPoint.lng : tCalc.originPoint.lng})"><i class="fa-solid fa-flag-checkered text-blue-500"></i> ${tCalc.destPoint ? tCalc.destPoint.name : 'Arrivée'}</span></div>`;
+          }
+          if (transitSpotIds.length > 0) {
+            tInner += transitSpotIds.map((s) => `
+              <div class="flex items-center justify-between text-[11px] py-1 px-2 bg-white/60 dark:bg-slate-900/60 rounded border border-slate-200 dark:border-slate-800/40">
+                <span class="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="jumpToDay(${day});switchLeftTab('planning');centerMapOnCoords(${s.lat},${s.lng})">↳ ${s.name}</span>
+                <div class="flex items-center space-x-0.5">
+                  <button onclick="event.stopPropagation();centerMapOnCoords(${s.lat},${s.lng})" class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs text-[10px]"></i></button>
+                  <button onclick="event.stopPropagation();editSpot('${s.id}')" class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square text-[10px]"></i></button>
+                </div>
+              </div>
+            `).join('');
+          }
+          if (transitBps.length > 0) {
+            tInner += transitBps.map((bp) => `
+              <div class="flex items-center justify-between text-[11px] py-1 px-2 bg-amber-50/80 dark:bg-amber-950/40 rounded border border-amber-200 dark:border-amber-900/30">
+                <span class="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 text-amber-900 dark:text-amber-200" onclick="jumpToDay(${day});switchLeftTab('planning');centerMapOnCoords(${bp.lat},${bp.lng})">💡 ${bp.title}</span>
+                <div class="flex items-center space-x-0.5">
+                  <button onclick="event.stopPropagation();centerMapOnCoords(${bp.lat},${bp.lng})" class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs text-[10px]"></i></button>
+                  <button onclick="event.stopPropagation();editBonPlan('${bp.id}')" class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square text-[10px]"></i></button>
+                </div>
+              </div>
+            `).join('');
+          }
+
+          tEl.innerHTML = tInner;
+          dayBody.appendChild(tEl);
+        });
+      }
+
+      // --- Bloc Hébergement ---
+      if (activeHotel) {
+        hasContent = true;
+        const hEl = document.createElement('div');
+        hEl.className = 'bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-lg p-2';
+        const rawNights = parseInt(activeHotel.nights) || 0;
+        hEl.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5 cursor-pointer hover:underline" onclick="centerMapOnCoords(${activeHotel.lat},${activeHotel.lng})">
+              <span class="text-sm">🏨</span>
+              <span class="font-semibold text-xs text-blue-900 dark:text-blue-200">${activeHotel.name}</span>
+              <span class="text-[10px] text-slate-500 dark:text-slate-400">(${rawNights}n)</span>
+            </div>
+            <div class="flex items-center space-x-0.5">
+              <button onclick="event.stopPropagation();centerMapOnCoords(${activeHotel.lat},${activeHotel.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+              <button onclick="event.stopPropagation();editHotel('${activeHotel.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="event.stopPropagation();deleteHotel('${activeHotel.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </div>
+          ${activeHotel.desc ? `<div class="text-[10px] text-slate-600 dark:text-slate-400 mt-1 ml-7 italic">${activeHotel.desc}</div>` : ''}
+        `;
+        dayBody.appendChild(hEl);
+      }
+
+      // --- Bloc Spots ---
+      if (daySpots.length > 0) {
+        hasContent = true;
+        const spotsEl = document.createElement('div');
+        spotsEl.className = 'space-y-1';
+        spotsEl.innerHTML = `
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Spots du jour</div>
+          ${daySpots.map((s, idx) => `
+            <div class="flex items-center justify-between text-[11px] py-1 px-2 bg-white dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
+              <span class="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-medium" onclick="jumpToDay(${day});switchLeftTab('planning');centerMapOnCoords(${s.lat},${s.lng})">
+                ${idx === 0 ? '📍' : '↳'} ${s.name}
+              </span>
+              <div class="flex items-center space-x-0.5">
+                <button onclick="event.stopPropagation();centerMapOnCoords(${s.lat},${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+                <button onclick="event.stopPropagation();editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="event.stopPropagation();detachSpotFromDay(${day}, '${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+              </div>
+            </div>
+          `).join('')}
+        `;
+        dayBody.appendChild(spotsEl);
+      }
+      // --- Bloc Bons plans ---
+      if (dayBps.length > 0) {
+        hasContent = true;
+        const bpsEl = document.createElement('div');
+        bpsEl.className = 'space-y-1';
+        bpsEl.innerHTML = `
+          <div class="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Bons plans</div>
+          ${dayBps.map((bp) => `
+            <div class="flex items-center justify-between text-[11px] py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
+              <span class="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-medium text-amber-900 dark:text-amber-200" onclick="jumpToDay(${day});switchLeftTab('planning');centerMapOnCoords(${bp.lat},${bp.lng})">
+                💡 ${bp.title} ${bp.category ? `<span class="text-[9px] text-amber-600 dark:text-amber-400">(${bp.category})</span>` : ''}
+              </span>
+              <div class="flex items-center space-x-0.5">
+                <button onclick="event.stopPropagation();centerMapOnCoords(${bp.lat},${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+                <button onclick="event.stopPropagation();editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="event.stopPropagation();detachBonPlanFromDay(${day}, '${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+              </div>
+            </div>
+          `).join('')}
+        `;
+        dayBody.appendChild(bpsEl);
+      }
+
+      // --- Aucun activité ---
+      if (!hasContent) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'text-[11px] text-slate-400 dark:text-slate-500 italic py-2 text-center';
+        emptyEl.innerHTML = '<i class="fa-solid fa-mug-hot mr-1"></i>Jour tranquille';
+        dayBody.appendChild(emptyEl);
+      }
+
+      dayCard.appendChild(dayBody);
+      daysContent.appendChild(dayCard);
     }
 
-    zoneEl.innerHTML = html;
-    container.appendChild(zoneEl);
+    zoneBlock.appendChild(daysContent);
+    chronoEl.appendChild(zoneBlock);
   });
+  // === BLOC "RETOUR" pour les jours hors zones ===
+  if (lastZoneDay < totalDays - 1) {
+    const returnBlock = document.createElement('div');
+    returnBlock.className = 'bg-white dark:bg-slate-950 rounded-xl shadow-sm overflow-hidden border-r-4 border-slate-300 dark:border-slate-600';
 
-  const arrTransit = getTransits().find(t => t.id === 'transit_last_arr');
-  const arrTransitCalc = arrTransit ? calculateTransitDistances(arrTransit) : null;
-  const isArrRoad = arrTransit ? isRoadTransitMode(arrTransit.mode, arrTransit.isNightTransit) : true;
-  const arrRouteInfo = (arrTransitCalc && isArrRoad) ? getEffectiveDistanceAndDuration(arrTransit.id, arrTransitCalc.totalDist) : null;
-  const arrTransitSpots = appState.spots.filter(s => s.target === 'transit_last_arr');
-  const arrTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_last_arr');
-
-  const arrEl = document.createElement('div');
-  arrEl.id = `card-endpoint-arrival`;
-  arrEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 shadow-sm';
-
-  let arrTransitSpotsHtml = arrTransitSpots.length > 0 ? arrTransitSpots.map((s, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
-      <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${idx + 1}) ${s.name}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+    const returnHeader = document.createElement('div');
+    returnHeader.className = 'px-3 py-2.5 bg-slate-100 dark:bg-slate-900 cursor-pointer hover:opacity-80 transition flex items-center justify-between';
+    returnHeader.onclick = () => { jumpToDay(lastZoneDay + 1); switchLeftTab('planning'); };
+    returnHeader.innerHTML = `
+      <div class="flex items-center space-x-2">
+        <span class="text-sm">🏠</span>
+        <span class="font-bold text-sm text-slate-600 dark:text-slate-300">Retour</span>
+        <span class="text-[11px] text-slate-500 dark:text-slate-400">J+${lastZoneDay + 1} → J+${totalDays - 1}</span>
       </div>
-    </div>
-  `).join('') : '';
+    `;
+    returnBlock.appendChild(returnHeader);
 
-  let arrTransitBpsHtml = arrTransitBps.length > 0 ? arrTransitBps.map((bp, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
-      <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})">(${idx + 1}) ${bp.title}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-      </div>
-    </div>
-  `).join('') : '';
+    const returnDays = document.createElement('div');
+    returnDays.className = 'p-2.5 pt-0 space-y-2';
 
-  arrEl.innerHTML = `
-    <div class="flex items-center justify-between">
-      <div class="truncate cursor-pointer" onclick="centerMapOnCoords(${appState.arrivalPoint.lat}, ${appState.arrivalPoint.lng})">
-        <h4 class="font-bold text-sm text-slate-900 dark:text-white flex items-center"><i class="fa-solid fa-house-flag text-blue-500 mr-2"></i>${appState.arrivalPoint.name}</h4>
-        <p class="text-xs text-slate-500 dark:text-slate-400 font-mono">${appState.arrivalPoint.lat.toFixed(3)}, ${appState.arrivalPoint.lng.toFixed(3)}</p>
-      </div>
-      <div class="flex items-center space-x-1">
-        <button onclick="centerMapOnCoords(${appState.arrivalPoint.lat}, ${appState.arrivalPoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="openEndpointModal('arrival')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-      </div>
-    </div>
-    ${arrTransit ? `
-      <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-        <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center">
-          <span>${getTransitModeIcon(arrTransit.mode)} ${arrTransit.name} (${arrTransit.mode || 'Voiture'})</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-mono">
-            ${arrRouteInfo && arrRouteInfo.isOsrm 
-              ? `🚗 ${arrRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(arrRouteInfo.durationMin)})` 
-              : `${arrTransitCalc ? arrTransitCalc.totalDist.toFixed(1) : 0} km`}
-          </span>
+    for (let day = lastZoneDay + 1; day < totalDays; day++) {
+      const shortDate = deltaToShortDateStr(day);
+      const dayRoute = calculateDayRoute(day);
+      const daySpotIds = appState.dailyItineraries[day] || [];
+      const dayBpIds = appState.dailyBonsPlans[day] || [];
+      const daySpots = daySpotIds.map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
+      const dayBps = dayBpIds.map(id => appState.bonsPlans.find(bp => bp.id === id)).filter(Boolean);
+      const dayTransits = dayRoute.transits || [];
+      const activeHotel = dayRoute.activeHotel;
+
+      const isRoadDay = !dayTransits.some(t => !isRoadTransitMode(t.mode, t.isNightTransit));
+      const dayRouteInfo = isRoadDay || dayTransits.length === 0
+        ? getEffectiveDistanceAndDuration(`day_${day}`, dayRoute.totalDist)
+        : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
+      const dayDistDisplay = dayRouteInfo.isOsrm
+        ? `🚗 ${dayRouteInfo.distanceKm.toFixed(1)} km${dayRouteInfo.durationMin ? ' ~' + formatDuration(dayRouteInfo.durationMin) : ''}`
+        : `${dayRouteInfo.distanceKm.toFixed(1)} km`;
+
+      // === HEURES LEVER/COUCHER SOLEIL ===
+      const sunrisePoint = dayRoute.originPoint;
+      const sunsetPoint = dayRoute.destPoint;
+      const sunRise = (sunrisePoint && dateStr) ? getSunTimes(sunrisePoint.lat, sunrisePoint.lng, dateStr) : null;
+      const sunSet = (sunsetPoint && dateStr) ? getSunTimes(sunsetPoint.lat, sunsetPoint.lng, dateStr) : null;
+      const sunInfo = (sunRise && !sunRise.error) ? `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneOffset}h)</span>` : '';
+
+      const dayCard = document.createElement('div');
+      dayCard.className = 'bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/60 rounded-lg overflow-hidden';
+
+      const dayHeader = document.createElement('div');
+      dayHeader.className = 'flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900/80 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition';
+      dayHeader.onclick = (e) => { if (e.target.closest('button')) return; jumpToDay(day); switchLeftTab('planning'); };
+      dayHeader.innerHTML = `
+        <div class="flex items-center space-x-1.5 text-xs">
+          <i class="fa-solid fa-calendar-day text-slate-400"></i>
+          <span class="font-semibold text-slate-700 dark:text-slate-200">J+${day}</span>
+          <span class="text-slate-500 dark:text-slate-400">${shortDate}</span>
         </div>
-        ${arrTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${arrTransitSpotsHtml}</div>` : ''}
-        ${arrTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${arrTransitBpsHtml}</div>` : ''}
-        <div class="text-right pt-1">
-          <button onclick="editTransitModal('${arrTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
+        <div class="flex items-center space-x-1.5">
+          ${sunInfo ? `<span class="text-[10px] text-amber-600 dark:text-amber-400">${sunInfo}</span>` : ''}
+          <span class="text-[11px] font-mono ${dayRouteInfo.isOsrm ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-slate-400'}">${dayDistDisplay}</span>
+          <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
         </div>
-      </div>
-    ` : ''}
+      `;
+      dayCard.appendChild(dayHeader);
+
+      const dayBody = document.createElement('div');
+      dayBody.className = 'px-2.5 py-1.5 space-y-1.5';
+      let hasContent = false;
+      // Return block content - Transit
+      if (dayTransits.length > 0) {
+        hasContent = true;
+        dayTransits.forEach((t) => {
+          const tCalc = calculateTransitDistances(t);
+          const isRoad = isRoadTransitMode(t.mode, t.isNightTransit);
+          const tRouteInfo = isRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
+          const tDurStr = tRouteInfo.durationMin ? ` ~${formatDuration(tRouteInfo.durationMin)}` : '';
+          const tDistDisplay = tRouteInfo.isOsrm ? `${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `${tCalc.totalDist.toFixed(1)} km`;
+
+          const tEl = document.createElement('div');
+          tEl.className = 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-2 space-y-1.5';
+          let tInner = `
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-1.5">
+                <span class="text-sm">${getTransitModeIcon(t.mode)}</span>
+                <span class="font-semibold text-xs text-amber-900 dark:text-amber-200">${t.name}</span>
+              </div>
+              <span class="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">${tDistDisplay}</span>
+            </div>
+          `;
+          if (t.isNightTransit) {
+            tInner += `<div class="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded inline-block"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord${t.nightCount > 1 ? ' (' + t.nightCount + ' nuits)' : ''}</div>`;
+          }
+          if (tCalc.originPoint) {
+            tInner += `<div class="text-[10px] text-slate-600 dark:text-slate-400"><span class="cursor-pointer hover:underline" onclick="event.stopPropagation();centerMapOnCoords(${tCalc.originPoint.lat},${tCalc.originPoint.lng})"><i class="fa-solid fa-circle-dot text-emerald-500"></i> ${tCalc.originPoint.name || 'Départ'}</span> <i class="fa-solid fa-arrow-right text-[9px]"></i> <span class="cursor-pointer hover:underline" onclick="event.stopPropagation();centerMapOnCoords(${tCalc.destPoint ? tCalc.destPoint.lat : tCalc.originPoint.lat},${tCalc.destPoint ? tCalc.destPoint.lng : tCalc.originPoint.lng})"><i class="fa-solid fa-flag-checkered text-blue-500"></i> ${tCalc.destPoint ? tCalc.destPoint.name : 'Arrivée'}</span></div>`;
+          }
+          tEl.innerHTML = tInner;
+          dayBody.appendChild(tEl);
+        });
+      }
+      if (activeHotel) {
+        hasContent = true;
+        const hEl = document.createElement('div');
+        hEl.className = 'bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-lg p-2';
+        const rawNights = parseInt(activeHotel.nights) || 0;
+        hEl.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5 cursor-pointer hover:underline" onclick="centerMapOnCoords(${activeHotel.lat},${activeHotel.lng})">
+              <span class="text-sm">🏨</span>
+              <span class="font-semibold text-xs text-blue-900 dark:text-blue-200">${activeHotel.name}</span>
+              <span class="text-[10px] text-slate-500 dark:text-slate-400">(${rawNights}n)</span>
+            </div>
+            <div class="flex items-center space-x-0.5">
+              <button onclick="event.stopPropagation();centerMapOnCoords(${activeHotel.lat},${activeHotel.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+              <button onclick="event.stopPropagation();editHotel('${activeHotel.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="event.stopPropagation();deleteHotel('${activeHotel.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </div>
+          ${activeHotel.desc ? `<div class="text-[10px] text-slate-600 dark:text-slate-400 mt-1 ml-7 italic">${activeHotel.desc}</div>` : ''}
+        `;
+        dayBody.appendChild(hEl);
+      }
+
+      if (daySpots.length > 0) {
+        hasContent = true;
+        const spotsEl = document.createElement('div');
+        spotsEl.className = 'space-y-1';
+        spotsEl.innerHTML = `
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Spots du jour</div>
+          ${daySpots.map((s, idx) => `
+            <div class="flex items-center justify-between text-[11px] py-1 px-2 bg-white dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
+              <span class="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-medium" onclick="jumpToDay(${day});switchLeftTab('planning');centerMapOnCoords(${s.lat},${s.lng})">
+                ${idx === 0 ? '📍' : '↳'} ${s.name}
+              </span>
+              <div class="flex items-center space-x-0.5">
+                <button onclick="event.stopPropagation();centerMapOnCoords(${s.lat},${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+                <button onclick="event.stopPropagation();editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="event.stopPropagation();detachSpotFromDay(${day}, '${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+              </div>
+            </div>
+          `).join('')}
+        `;
+        dayBody.appendChild(spotsEl);
+      }
+
+      if (dayBps.length > 0) {
+        hasContent = true;
+        const bpsEl = document.createElement('div');
+        bpsEl.className = 'space-y-1';
+        bpsEl.innerHTML = `
+          <div class="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Bons plans</div>
+          ${dayBps.map((bp) => `
+            <div class="flex items-center justify-between text-[11px] py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
+              <span class="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-medium text-amber-900 dark:text-amber-200" onclick="jumpToDay(${day});switchLeftTab('planning');centerMapOnCoords(${bp.lat},${bp.lng})">
+                💡 ${bp.title} ${bp.category ? `<span class="text-[9px] text-amber-600 dark:text-amber-400">(${bp.category})</span>` : ''}
+              </span>
+              <div class="flex items-center space-x-0.5">
+                <button onclick="event.stopPropagation();centerMapOnCoords(${bp.lat},${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+                <button onclick="event.stopPropagation();editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="event.stopPropagation();detachBonPlanFromDay(${day}, '${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+              </div>
+            </div>
+          `).join('')}
+        `;
+        dayBody.appendChild(bpsEl);
+      }
+
+      if (!hasContent) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'text-[11px] text-slate-400 dark:text-slate-500 italic py-2 text-center';
+        emptyEl.innerHTML = '<i class="fa-solid fa-mug-hot mr-1"></i>Jour tranquille';
+        dayBody.appendChild(emptyEl);
+      }
+
+      dayCard.appendChild(dayBody);
+      returnDays.appendChild(dayCard);
+    }
+
+    returnBlock.appendChild(returnDays);
+    chronoEl.appendChild(returnBlock);
+  }
+
+  container.appendChild(chronoEl);
+  // === DÉTAIL PAR ZONE ===
+  const zoneDetailEl = document.createElement('div');
+  zoneDetailEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-sm mt-2';
+  zoneDetailEl.innerHTML = `
+    <div class="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center">
+      <i class="fa-solid fa-map-location-dot mr-2 text-indigo-500"></i>Détail par Zone
+    </div>
   `;
-  container.appendChild(arrEl);
+
+  if (appState.zones.length > 0) {
+    const zoneList = document.createElement('div');
+    zoneList.className = 'mt-2 space-y-2';
+
+    appState.zones.forEach((zone, zoneIdx) => {
+      const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0 };
+      const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
+      const zoneColor = zone.color || '#6366f1';
+      const firstZoneDay = comp.checkinDay;
+
+      let outboundTransit = null;
+      if (zoneIdx < appState.zones.length - 1) {
+        const nextZoneId = appState.zones[zoneIdx + 1].id;
+        const transitId = `transit_${zone.id}_${nextZoneId}`;
+        outboundTransit = transits.find(t => t && t.id === transitId);
+      }
+
+      let inboundTransit = null;
+      if (zoneIdx > 0) {
+        const prevZoneId = appState.zones[zoneIdx - 1].id;
+        const transitId = `transit_${prevZoneId}_${zone.id}`;
+        inboundTransit = transits.find(t => t && t.id === transitId);
+      }
+
+      const zoneCard = document.createElement('div');
+      zoneCard.className = 'border border-slate-200 dark:border-slate-800 rounded-lg p-2.5';
+
+      let zoneCardInner = `
+        <div class="flex items-center justify-between cursor-pointer hover:opacity-80 transition">
+          <div class="flex items-center space-x-2 flex-1" onclick="jumpToDay(${firstZoneDay});switchLeftTab('planning');">
+            <span class="w-3 h-3 rounded-full shrink-0" style="background:${zoneColor}"></span>
+            <span class="font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-200">${zone.name}</span>
+            <span class="text-[11px] text-slate-500 dark:text-slate-400">J+${comp.checkinDay} -> J+${comp.checkoutDay}</span>
+          </div>
+          <div class="flex items-center space-x-1 shrink-0">
+            <button onclick="event.stopPropagation();moveZoneOrder(${zoneIdx}, -1)" class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition" title="Monter"><i class="fa-solid fa-caret-up"></i></button>
+            <button onclick="event.stopPropagation();moveZoneOrder(${zoneIdx}, 1)" class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition" title="Descendre"><i class="fa-solid fa-caret-down"></i></button>
+          </div>
+        </div>
+        <div class="mt-1.5 ml-5 space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+      `;
+
+      if (zoneHotels.length > 0) {
+        zoneCardInner += zoneHotels.map(h => {
+          const hNights = parseInt(h.nights) || 0;
+          return `<div class="flex items-center gap-1"><i class="fa-solid fa-hotel text-blue-500"></i> ${h.name} <span class="text-slate-400">(${hNights}n)</span></div>`;
+        }).join('');
+      } else if (comp.nightTransitConsumed > 0) {
+        zoneCardInner += `<div class="flex items-center gap-1"><i class="fa-solid fa-bed text-amber-500"></i> Nuit(s) couverte(s) par transport de nuit (${comp.nightTransitConsumed}n)</div>`;
+      } else {
+        zoneCardInner += `<div class="flex items-center gap-1 text-amber-600"><i class="fa-solid fa-triangle-exclamation"></i> Aucun hébergement</div>`;
+      }
+
+      if (inboundTransit) {
+        zoneCardInner += `<div class="flex items-center gap-1"><i class="fa-solid fa-route text-amber-500"></i> <- ${inboundTransit.name} ${inboundTransit.isNightTransit ? '🛌' : ''}</div>`;
+      }
+
+      if (outboundTransit) {
+        zoneCardInner += `<div class="flex items-center gap-1"><i class="fa-solid fa-route text-amber-500"></i> -> ${outboundTransit.name} ${outboundTransit.isNightTransit ? '🛌' : ''}</div>`;
+      }
+
+      zoneCardInner += '</div>';
+      zoneCard.innerHTML = zoneCardInner;
+      zoneList.appendChild(zoneCard);
+    });
+
+    zoneDetailEl.appendChild(zoneList);
+  } else {
+    zoneDetailEl.innerHTML += '<div class="text-xs text-slate-500 dark:text-slate-400 mt-2 italic">Aucune zone définie.</div>';
+  }
+
+  container.appendChild(zoneDetailEl);
 }
 
 function detachSpotFromDay(day, spotId) {
@@ -776,6 +1170,7 @@ function detachSpotFromDay(day, spotId) {
     appState.dailyItineraries[day] = appState.dailyItineraries[day].filter(id => id !== spotId);
     invalidateRouteCache();
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -784,6 +1179,7 @@ function detachBonPlanFromDay(day, bonPlanId) {
     appState.dailyBonsPlans[day] = appState.dailyBonsPlans[day].filter(id => id !== bonPlanId);
     invalidateRouteCache();
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -813,11 +1209,19 @@ function renderPlanningUI() {
       const tRouteInfo = isTuningRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
       const modeIcon = getTransitModeIcon(t.mode);
       const durStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
-      banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/45 border-amber-300 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 flex justify-between items-center flex-wrap gap-2';
-      banner.innerHTML = `<div><span class="mr-2 text-base">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em> • Distance transit : <span class="text-emerald-600 dark:text-emerald-400 font-mono font-bold">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${durStr}` : `${tCalc.totalDist.toFixed(1)} km`}</span>.</div><button onclick="editTransitModal('${t.id}')" class="bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-950 dark:text-white px-2.5 py-1 rounded-lg text-xs font-semibold"><i class="fa-solid fa-gear mr-1"></i>Configurer</button>`;
+      banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/45 border-amber-300 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 space-y-2';
+      banner.innerHTML = `
+        <div class="flex justify-between items-center flex-wrap gap-2">
+          <div><span class="mr-2 text-base">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em> • Distance transit : <span class="text-emerald-600 dark:text-emerald-400 font-mono font-bold">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${durStr}` : `${tCalc.totalDist.toFixed(1)} km`}</span>${t.isNightTransit ? ' • <span class="text-amber-500 font-bold">🛌 Nuit à bord</span>' : ''}.</div>
+          <button onclick="editTransitModal('${t.id}')" class="bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-950 dark:text-white px-2.5 py-1 rounded-lg text-xs font-semibold"><i class="fa-solid fa-gear mr-1"></i>Configurer</button>
+        </div>
+        ${renderTransitEndpointsSummary(t)}
+        ${t.desc ? `<div class="text-xs text-amber-900 dark:text-amber-100 bg-white/50 dark:bg-slate-900/50 p-2 rounded-lg border border-amber-200/70 dark:border-amber-800/40 whitespace-pre-line font-mono">${t.desc}</div>` : ''}
+      `;
     } else if (currentZone) {
+      const zoneAnchor = (!activeHotel && typeof getZoneAnchorPoint === 'function') ? getZoneAnchorPoint(currentZone.id) : null;
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-200 flex justify-between items-center flex-wrap gap-2';
-      banner.innerHTML = `<div><i class="fa-solid fa-map-pin text-indigo-600 dark:text-indigo-400 mr-2"></i>Secteur actif : <strong>${currentZone.name}</strong></div>${activeHotel ? `<span class="text-xs bg-indigo-100 dark:bg-indigo-900 px-2.5 py-1 rounded-lg text-indigo-700 dark:text-indigo-300 cursor-pointer hover:underline" onclick="centerMapOnCoords(${activeHotel.lat}, ${activeHotel.lng})"><i class="fa-solid fa-hotel mr-1"></i>${activeHotel.name}</span>` : ''}`;
+      banner.innerHTML = `<div><i class="fa-solid fa-map-pin text-indigo-600 dark:text-indigo-400 mr-2"></i>Secteur actif : <strong>${currentZone.name}</strong></div>${activeHotel ? `<span class="text-xs bg-indigo-100 dark:bg-indigo-900 px-2.5 py-1 rounded-lg text-indigo-700 dark:text-indigo-300 cursor-pointer hover:underline" onclick="centerMapOnCoords(${activeHotel.lat}, ${activeHotel.lng})"><i class="fa-solid fa-hotel mr-1"></i>${activeHotel.name}</span>` : (zoneAnchor ? `<span class="text-xs bg-indigo-100 dark:bg-indigo-900 px-2.5 py-1 rounded-lg text-indigo-700 dark:text-indigo-300 cursor-pointer hover:underline" onclick="centerMapOnCoords(${zoneAnchor.lat}, ${zoneAnchor.lng})"><i class="fa-solid fa-location-dot mr-1"></i>${zoneAnchor.name}</span>` : '')}`;
     } else {
       banner.className = 'p-3.5 rounded-xl border text-xs sm:text-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400';
       banner.innerHTML = `<i class="fa-solid fa-circle-info mr-2"></i>Aucun secteur défini pour cette journée.`;
@@ -927,7 +1331,7 @@ function renderPlanningUI() {
               <button onclick="editSpot('${ts.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition" title="Modifier"><i class="fa-solid fa-pen-to-square"></i></button>
               <button onclick="moveTransitSpot('${activeTransitId}', ${tIdx}, -1)" class="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white transition" title="Monter"><i class="fa-solid fa-arrow-up text-xs"></i></button>
               <button onclick="moveTransitSpot('${activeTransitId}', ${tIdx}, 1)" class="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white transition" title="Descendre"><i class="fa-solid fa-arrow-down text-xs"></i></button>
-              <button onclick="unassignSpot('${ts.id}')" class="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
+              <button onclick="unassignSpot('${ts.id}')" class="p-1.5 text-amber-600 dark:text-amber-400 transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
             </div>
           </div>
           ${ts.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300 pl-8">${ts.desc}</p>` : ''}
@@ -979,7 +1383,7 @@ function renderPlanningUI() {
         ${spot.desc ? `<p class="text-xs text-slate-600 dark:text-slate-300 pl-8">${spot.desc}</p>` : ''}
         ${spot.url ? `<div class="pl-8 pt-0.5"><a href="${spot.url}" target="_blank" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center"><i class="fa-solid fa-link mr-1"></i><span class="truncate">${spot.url}</span></a></div>` : ''}
         <div class="text-xs text-emerald-600 dark:text-emerald-400 font-mono pl-8 pt-0.5">➔ Distance : ${segmentDisplay}</div>
-        ${spot.imageBase64 ? `<div class="pl-8 pt-1.5"><img src="${spot.imageBase64}" class="w-28 h-20 object-cover rounded-xl border border-slate-200 dark:border-slate-700"></div>` : ''}
+        ${spot.imageBase64 ? `<div class="pl-8 pt-1.5"><img src="${spot.imageBase64}" class="w-28 h-20 object-cover rounded-xl border border-slate-300 dark:border-slate-700"></div>` : ''}
       `;
       routeContainer.appendChild(item);
     });
@@ -1031,6 +1435,19 @@ function renderPlanningUI() {
       `;
       routeContainer.appendChild(item);
     });
+
+    if (dayRoute.destPoint && !activeHotel) {
+      const destItem = document.createElement('div');
+      destItem.className = 'bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 text-xs sm:text-sm flex justify-between items-center text-slate-600 dark:text-slate-400';
+      destItem.innerHTML = `
+        <span class="cursor-pointer hover:text-slate-900 dark:hover:text-white" onclick="centerMapOnCoords(${dayRoute.destPoint.lat}, ${dayRoute.destPoint.lng})"><i class="fa-solid fa-flag-checkered text-emerald-500 mr-2"></i>Arrivée : <strong>${dayRoute.destPoint.name || 'Destination'}</strong></span>
+        <div class="flex space-x-1">
+          <button onclick="centerMapOnCoords(${dayRoute.destPoint.lat}, ${dayRoute.destPoint.lng})" class="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
+          <a href="${getGoogleMapsUrl(dayRoute.destPoint.lat, dayRoute.destPoint.lng)}" target="_blank" class="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400" title="Maps"><i class="fa-solid fa-map-location-dot"></i></a>
+        </div>
+      `;
+      routeContainer.appendChild(destItem);
+    }
   }
 
   const dayRouteInfo = isCurrentDayRoad ? getEffectiveDistanceAndDuration(`day_${curDay}`, dayRoute.totalDist) : { isOsrm: false, distanceKm: dayRoute.totalDist, durationMin: null };
@@ -1049,6 +1466,7 @@ function changeDay(delta) {
   if (nextDay >= 0 && nextDay < maxDays) {
     appState.currentSelectedDay = nextDay;
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -1062,6 +1480,7 @@ function addSpotToCurrentDay() {
   if (!appState.dailyItineraries[curDay].includes(spotId)) appState.dailyItineraries[curDay].push(spotId);
   invalidateRouteCache();
   renderApp();
+  saveToLocalStorage();
 }
 
 function addBonPlanToCurrentDay() {
@@ -1074,6 +1493,7 @@ function addBonPlanToCurrentDay() {
   if (!appState.dailyBonsPlans[curDay].includes(bpId)) appState.dailyBonsPlans[curDay].push(bpId);
   invalidateRouteCache();
   renderApp();
+  saveToLocalStorage();
 }
 
 function moveSpotInDay(day, idx, direction) {
@@ -1086,6 +1506,7 @@ function moveSpotInDay(day, idx, direction) {
     list[targetIdx] = temp;
     invalidateRouteCache();
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -1099,6 +1520,7 @@ function moveTransitSpot(transitId, idx, direction) {
     list[targetIdx] = temp;
     invalidateRouteCache();
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -1107,6 +1529,7 @@ function removeSpotFromDay(day, idx) {
     appState.dailyItineraries[day].splice(idx, 1);
     invalidateRouteCache();
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -1115,6 +1538,7 @@ function removeBonPlanFromDay(day, idx) {
     appState.dailyBonsPlans[day].splice(idx, 1);
     invalidateRouteCache();
     renderApp();
+    saveToLocalStorage();
   }
 }
 
@@ -1194,8 +1618,8 @@ function renderAllSpotsUI() {
       ${s.imageBase64 ? `<div><img src="${s.imageBase64}" class="w-32 h-24 object-cover rounded-xl border border-slate-200 dark:border-slate-700"></div>` : ''}
       <div class="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800 gap-2 flex-wrap">
         <div class="flex items-center space-x-1.5">
-          <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded-xl transition" title="Centrer sur la carte"><i class="fa-solid fa-crosshairs"></i></button>
-          <a href="${getGoogleMapsUrl(s.lat, s.lng)}" target="_blank" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 rounded-xl transition" title="Ouvrir dans Google Maps"><i class="fa-solid fa-map-location-dot"></i></a>
+          <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded-xl transition" title="Centrer sur la carte"><i class="fa-solid fa-crosshairs"></i></button>
+          <a href="${getGoogleMapsUrl(s.lat, s.lng)}" target="_blank" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded-xl transition" title="Ouvrir dans Google Maps"><i class="fa-solid fa-map-location-dot"></i></a>
           <button onclick="editSpot('${s.id}')" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-xl transition" title="Éditer le spot"><i class="fa-solid fa-pen-to-square"></i></button>
           <button onclick="createSubSpot('${s.id}')" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded-xl transition text-xs font-semibold" title="Ajouter un sous-spot"><i class="fa-solid fa-folder-plus mr-1"></i>+ Sous-spot</button>
           <button onclick="deleteSpot('${s.id}')" class="p-2 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded-xl transition" title="Supprimer définitivement"><i class="fa-solid fa-trash-can"></i></button>
@@ -1274,30 +1698,33 @@ function renderAllSpotsUI() {
 
 function checkCoherence() {
   const alerts = [];
+  const computed = getZoneComputedDates();
   
   appState.zones.forEach(zone => {
     const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
+    const comp = computed[zone.id];
+    const isCoveredByNightTransit = comp && comp.nightTransitConsumed > 0;
+
     if (zoneHotels.length === 0) {
-      alerts.push({ type: 'danger', text: `⚠️ La zone "${zone.name}" n'a aucun hébergement rattaché.` });
-    } else {
-      const computed = getZoneComputedDates();
-      const comp = computed[zone.id];
-      if (comp) {
-        const hotel = zoneHotels[0];
-        const radius = hotel.radiusKm !== undefined ? hotel.radiusKm : 50;
-        
-        for (let d = comp.checkinDay; d < comp.checkoutDay; d++) {
-          const daySpots = (appState.dailyItineraries[d] || []).map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
-          daySpots.forEach(s => {
-            const dist = haversineDistanceKm(hotel.lat, hotel.lng, s.lat, s.lng);
-            if (dist > radius) {
-              alerts.push({ 
-                type: 'warning', 
-                text: `⚠️ Le spot "${s.name}" (Jour J+${d}) est situé à ${dist.toFixed(1)} km de l'hébergement "${hotel.name}" (supérieur au rayon de confort de ${radius} km).` 
-              });
-            }
-          });
-        }
+      if (!isCoveredByNightTransit) {
+        alerts.push({ type: 'danger', text: `⚠️ La zone "${zone.name}" n'a aucun hébergement rattaché.` });
+      }
+    } else if (comp) {
+      const hotel = zoneHotels[0];
+      const radius = hotel.radiusKm !== undefined ? hotel.radiusKm : 50;
+      const effectiveCheckout = comp.checkinDay + comp.nights;
+      
+      for (let d = comp.checkinDay; d < effectiveCheckout; d++) {
+        const daySpots = (appState.dailyItineraries[d] || []).map(id => appState.spots.find(s => s.id === id)).filter(Boolean);
+        daySpots.forEach(s => {
+          const dist = haversineDistanceKm(hotel.lat, hotel.lng, s.lat, s.lng);
+          if (dist > radius) {
+            alerts.push({ 
+              type: 'warning', 
+              text: `⚠️ Le spot "${s.name}" (Jour J+${d}) est situé à ${dist.toFixed(1)} km de l'hébergement "${hotel.name}" (supérieur au rayon de confort de ${radius} km).` 
+            });
+          }
+        });
       }
     }
   });
@@ -1339,38 +1766,6 @@ function checkCoherence() {
       container.appendChild(el);
     });
   }
-}
-
-function openCoherenceModal() { openModal('coherenceModal'); }
-
-function switchLeftTab(tab) {
-  appState.activeTab = tab;
-  ['Structure', 'Planning', 'AllSpots'].forEach(t => {
-    const content = document.getElementById(`tabContent${t}`);
-    const btn = document.getElementById(`tabBtn${t}`);
-    if (content) content.classList.add('hidden');
-    if (btn) btn.className = 'flex-1 py-2.5 text-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200';
-  });
-
-  if (tab === 'structure') {
-    document.getElementById('tabContentStructure')?.classList.remove('hidden');
-    const btn = document.getElementById('tabBtnStructure');
-    if (btn) btn.className = 'flex-1 py-2.5 text-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500 font-semibold';
-    renderStructureUI();
-  } else if (tab === 'planning') {
-    document.getElementById('tabContentPlanning')?.classList.remove('hidden');
-    const btn = document.getElementById('tabBtnPlanning');
-    if (btn) btn.className = 'flex-1 py-2.5 text-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500 font-semibold';
-    renderPlanningUI();
-  } else {
-    document.getElementById('tabContentAllSpots')?.classList.remove('hidden');
-    const btn = document.getElementById('tabBtnAllSpots');
-    if (btn) btn.className = 'flex-1 py-2.5 text-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500 font-semibold flex items-center justify-center space-x-1.5';
-    renderAllSpotsUI();
-  }
-
-  setTimeout(() => { if (map) { map.invalidateSize(); renderMapMarkers(); } }, 150);
-  renderTimelineHeader();
 }
 
 async function enrichTripWithOsrmRoutes() {
@@ -1448,11 +1843,15 @@ async function generateRoadbookContent() {
   `;
 
   appState.zones.forEach(zone => {
-    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0 };
+    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0, nightTransitConsumed: 0 };
     const checkinDate = deltaToDateStr(comp.checkinDay);
     const checkoutDate = deltaToDateStr(comp.checkoutDay);
     const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
+    const zoneAnchor = (zoneHotels.length === 0 && typeof getZoneAnchorPoint === 'function') ? getZoneAnchorPoint(zone.id) : null;
     const zoneDist = calculateZoneTotalDistance(zone);
+    const nightSummary = comp.nightTransitConsumed > 0
+      ? `${comp.nights} nuit(s) hôtel + ${comp.nightTransitConsumed} nuit(s) transport`
+      : `${comp.nights} nuit(s)`;
 
     html += `
       <div class="p-3 bg-white rounded-lg border border-slate-200 flex flex-col justify-between" style="border-left: 4px solid ${zone.color}">
@@ -1460,7 +1859,7 @@ async function generateRoadbookContent() {
           <div>
             <span class="font-bold text-slate-800 block">${zone.name}</span>
             ${zone.desc ? `<p class="text-xs text-slate-500 mt-0.5">${zone.desc}</p>` : ''}
-            <span class="text-xs text-slate-500">J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${comp.nights} nuit(s) • ${checkinDate} à ${checkoutDate})</span>
+            <span class="text-xs text-slate-500">J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${nightSummary} • ${checkinDate} à ${checkoutDate})</span>
             <span class="text-xs font-mono font-bold text-emerald-600 block mt-1">Distance secteur (local) : ${zoneDist.toFixed(1)} km</span>
           </div>
         </div>
@@ -1469,7 +1868,9 @@ async function generateRoadbookContent() {
             <div><i class="fas fa-hotel mr-1 text-blue-600"></i> <strong>Hébergement(s) :</strong> ${zoneHotels.map(h => h.name + (h.desc ? ` (${h.desc})` : '')).join(', ')}</div>
             ${zoneHotels.map(h => h.url ? `<div><a href="${h.url}" target="_blank" class="text-indigo-600 hover:underline"><i class="fas fa-link mr-1"></i>${h.url}</a></div>` : '').join('')}
           </div>
-        ` : '<div class="mt-2 text-xs text-amber-600 italic">⚠️ Aucun hébergement configuré (0 nuit)</div>'}
+        ` : (comp.nightTransitConsumed > 0
+          ? `<div class="mt-2 text-xs text-amber-700 font-medium">🛌 Nuit(s) assurée(s) en transport de nuit${zoneAnchor ? ` • Point d'ancrage : ${zoneAnchor.name}` : ''}</div>`
+          : '<div class="mt-2 text-xs text-amber-600 italic">⚠️ Aucun hébergement configuré (0 nuit)</div>')}
       </div>
     `;
   });
@@ -1523,7 +1924,17 @@ async function generateRoadbookContent() {
       const tRouteInfo = isTRoad ? getEffectiveDistanceAndDuration(t.id, tCalc.totalDist) : { isOsrm: false, distanceKm: tCalc.totalDist, durationMin: null };
       const modeIcon = getTransitModeIcon(t.mode);
       const tDurStr = tRouteInfo.durationMin ? ` (~${formatDuration(tRouteInfo.durationMin)})` : '';
-      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex items-center justify-between"><div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>.</div><span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span></div>`;
+      html += `<div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900 flex flex-col space-y-1">
+        <div class="flex items-center justify-between">
+          <div><span class="mr-2 text-sm">${modeIcon}</span><strong>${t.name} :</strong> Mode : <em>${t.mode || 'Voiture'}</em>${t.isNightTransit ? ` • <strong>🛌 Nuit à bord (${t.nightCount || 1} nuit(s))</strong>` : ''}.</div>
+          <span class="font-mono font-bold text-emerald-700">${tRouteInfo.isOsrm ? `🚗 ${tRouteInfo.distanceKm.toFixed(1)} km${tDurStr}` : `+${tCalc.totalDist.toFixed(1)} km`}</span>
+        </div>
+        ${(tCalc.originPoint || tCalc.destPoint) ? `<div class="text-[11px] text-amber-800 flex flex-wrap gap-x-4">
+          ${tCalc.originPoint ? `<span><strong>De :</strong> ${tCalc.originPoint.name}</span>` : ''}
+          ${tCalc.destPoint ? `<span><strong>À :</strong> ${tCalc.destPoint.name}</span>` : ''}
+        </div>` : ''}
+        ${t.desc ? `<div class="text-amber-800 whitespace-pre-line font-mono text-[11px] pt-1 border-t border-amber-200/70">${t.desc}</div>` : ''}
+      </div>`;
     }
 
     if (activeHotel) {
@@ -1632,13 +2043,11 @@ async function generateRoadbookContent() {
 }
 
 function locateAndHighlightItem(type, id) {
-  // Fermer la popup active sur la carte
   if (map) map.closePopup();
 
   let targetDay = null;
 
   if (type === 'spot') {
-    // Vérifier si le spot est assigné à une journée
     Object.keys(appState.dailyItineraries).forEach(d => {
       if (appState.dailyItineraries[d] && appState.dailyItineraries[d].includes(id)) {
         targetDay = parseInt(d);
@@ -1646,11 +2055,9 @@ function locateAndHighlightItem(type, id) {
     });
 
     if (targetDay !== null) {
-      // S'il est associé à un jour, basculer sur l'onglet Planning
       appState.currentSelectedDay = targetDay;
       switchLeftTab('planning');
     } else {
-      // Sinon, basculer sur l'onglet Tous les Spots / Structure
       switchLeftTab('allspots');
     }
   } else if (type === 'bonplan') {
@@ -1667,11 +2074,9 @@ function locateAndHighlightItem(type, id) {
       switchLeftTab('allspots');
     }
   } else {
-    // Pour les hôtels ou départ/arrivée, on bascule sur la structure
     switchLeftTab('structure');
   }
 
-  // Laisser le DOM se rafraîchir puis cibler et faire clignoter l'élément dans la liste
   setTimeout(() => {
     let cardId = '';
     if (type === 'spot') cardId = `card-spot-${id}`;
@@ -1688,4 +2093,23 @@ function locateAndHighlightItem(type, id) {
       }, 2000);
     }
   }, 100);
+}
+
+function toggleTransitNight(transitId, isNight) {
+  if (!Array.isArray(appState.customTransits)) {
+    appState.customTransits = appState.customTransits ? Object.values(appState.customTransits) : [];
+  }
+  let customT = appState.customTransits.find(ct => ct.id === transitId);
+  if (!customT) {
+    customT = { id: transitId, isNightTransit: isNight, nightCount: 1 };
+    appState.customTransits.push(customT);
+  } else {
+    customT.isNightTransit = isNight;
+    if (isNight && !customT.nightCount) {
+      customT.nightCount = 1;
+    }
+  }
+  invalidateRouteCache();
+  renderApp();
+  saveToLocalStorage();
 }
