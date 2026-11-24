@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 const CACHE_NAME = 'geovoyage-v2.2';
+=======
+const CACHE_NAME = 'geovoyage-v3.0';
+>>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
 const TILE_CACHE_NAME = 'geovoyage-tiles-v1';
 
 // Liste des ressources statiques essentielles de l'application
@@ -14,6 +18,12 @@ const ASSETS_TO_CACHE = [
   './pvi_192.png',
   './pvi_512.png',
   './help.html',
+  './all.min.css',
+  './cdn.tailwindcss.com_3.4.17.js',
+  './exif-js.js',
+  './jszip.min.js',
+  './leaflet.css',
+  './leaflet.js',
   'https://unpkg.com/leaflset@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',

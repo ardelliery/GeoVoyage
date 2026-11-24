@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿// ==========================================
+=======
+// ==========================================
+>>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
 // ui.planning.js — Fonctions pour le Planning par Jour
 // ==========================================
 
@@ -109,6 +113,11 @@ function renderPlanningByDay() {
   container.innerHTML = html;
 }
 
+<<<<<<< HEAD
+=======
+    html += '</div>';
+
+>>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
 // ==========================================
 // Helper: Render un transit card
 // ==========================================
@@ -198,10 +207,17 @@ function detachSpotFromDay(day, spotId) {
 function detachBonPlanFromDay(day, bpId) {
   if (!confirm('Détacher ce bon plan de ce jour ?')) return;
   const ids = appState.dailyBonsPlans[day] || [];
+<<<<<<< HEAD
   appState.dailyBonsPlans[day] = ids.filter(id => id !== bpId);
   renderAll();
   renderPlanningByDay();
 }
+=======
+
+// ==========================================
+// SPOTS CONTROLS — Tri et Filtre
+// ==========================================
+>>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
 
 function updateSpotsReferenceSelects() {
   const refSelect = document.getElementById('spotsReferencePoint');
@@ -284,6 +300,7 @@ function getFilteredSortedSpots() {
   
   return spots;
 }
+<<<<<<< HEAD
 // ==========================================
 // 5 FONCTIONS MANQUANTES NÉCESSAIRES
 // ==========================================
@@ -371,3 +388,10 @@ function isSpotInZone(spotId, zoneId) {
 
   return false;
 }
+=======
+
+  appState.dailyBonsPlans[day] = ids.filter(id => id !== bpId);
+  renderAll();
+  renderPlanningByDay();
+}
+>>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
