@@ -269,7 +269,6 @@ function getZoneAnchorPoint(zoneId) {
     return outgoingTransit.fromPoint;
   }
 
-<<<<<<< HEAD
   // ➔ Fallback : chercher un spot assigné à une zone (via target transit inter-zone)
   const zoneTransitId = zoneIndex === 0 
     ? 'transit_dep_first' 
@@ -282,8 +281,6 @@ function getZoneAnchorPoint(zoneId) {
   // ➔ Aucun anchor trouvé pour cette zone — on retourne null
   // Le transit ou la route du jour afficheront 0 ou un avertissement
   console.warn(`[ZoneAnchor] Aucun point d'ancrage trouvé pour la zone "${zoneId}" — le calcul sera approximatif ou nul.`);
-=======
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
   return null;
 }
 
@@ -348,7 +345,6 @@ function deltaToShortDateStr(deltaDays) {
 }
 
 /**
-<<<<<<< HEAD
  * Calcul des heures de lever/coucher du soleil
  * Formule NOAA simplifiée (précision ~1-2 minutes)
  *
@@ -450,8 +446,6 @@ function getGeographicTimezoneOffset(longitude, month) {
 
 
 /**
-=======
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
  * Calcule les jours de début (checkinDay), fin (checkoutDay) et nuits d'hôtel effectives
  * pour chaque zone. Les transits de nuit qui ARRIVENT à une zone décalent le checkin.
  * Les transits de nuit qui PARTENT d'une zone décalent le checkout et le jour actuel.
@@ -612,7 +606,6 @@ function calculateTransitDistances(transit) {
   let destPoint = null;
 
   if (transit.id === 'transit_dep_first') {
-<<<<<<< HEAD
     // Transit départ global → première zone
     originPoint = transit.fromPoint || appState.departurePoint;
     destPoint = transit.toPoint || (transit.toZone ? getZoneAnchorPoint(transit.toZone.id) : null);
@@ -629,16 +622,6 @@ function calculateTransitDistances(transit) {
     destPoint = transit.toPoint || (transit.to ? getZoneAnchorPoint(transit.to.id) : null);
     // PLUS DE FALLBACK vers departurePoint/arrivalPoint : c'est un bug de contexte
     // Si les zones n'ont pas d'anchor, le transit ne pourra pas être calculé (c'est voulu)
-=======
-    originPoint = transit.fromPoint || appState.departurePoint;
-    destPoint = transit.toPoint || (transit.toZone ? (getZoneAnchorPoint(transit.toZone.id) || appState.arrivalPoint) : appState.arrivalPoint);
-  } else if (transit.id === 'transit_last_arr') {
-    originPoint = transit.fromPoint || (transit.fromZone ? (getZoneAnchorPoint(transit.fromZone.id) || appState.departurePoint) : appState.departurePoint);
-    destPoint = transit.toPoint || appState.arrivalPoint;
-  } else {
-    originPoint = transit.fromPoint || (transit.from ? (getZoneAnchorPoint(transit.from.id) || appState.departurePoint) : appState.departurePoint);
-    destPoint = transit.toPoint || (transit.to ? (getZoneAnchorPoint(transit.to.id) || appState.arrivalPoint) : appState.arrivalPoint);
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
   }
 
   const rawTransitSpots = appState.spots.filter(s => s.target === transit.id);
@@ -705,16 +688,11 @@ function calculateDayRoute(curDay) {
       destPoint = anchor;
     } else if (curDay === 0) {
       originPoint = appState.departurePoint;
-<<<<<<< HEAD
       destPoint = appState.zones.length > 0 ? getZoneAnchorPoint(appState.zones[0].id) : null;
     } else {
       // Zone sans anchor : fallback prudent vers arrivalPoint (point final du voyage)
       // Ce fallback est le moindre mal — le résultat sera imprécis mais pas erroné
       // (contrairement à departurePoint qui renvoie au début du voyage)
-=======
-      destPoint = appState.arrivalPoint;
-    } else {
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
       originPoint = appState.arrivalPoint;
       destPoint = appState.arrivalPoint;
     }

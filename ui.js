@@ -625,84 +625,7 @@ function renderStructureUI() {
   if (!container) return;
   container.innerHTML = '';
 
-<<<<<<< HEAD
   const totalDays = getTotalDays();
-=======
-  const depTransit = getTransits().find(t => t.id === 'transit_dep_first');
-  const depTransitCalc = depTransit ? calculateTransitDistances(depTransit) : null;
-  const isDepRoad = depTransit ? isRoadTransitMode(depTransit.mode, depTransit.isNightTransit) : true;
-  const depRouteInfo = (depTransitCalc && isDepRoad) ? getEffectiveDistanceAndDuration(depTransit.id, depTransitCalc.totalDist) : null;
-
-  const depTransitSpots = appState.spots.filter(s => s.target === 'transit_dep_first');
-  const depTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_dep_first');
-
-  const depEl = document.createElement('div');
-  depEl.id = `card-endpoint-departure`;
-  depEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 shadow-sm';
-  
-  let depTransitSpotsHtml = depTransitSpots.length > 0 ? depTransitSpots.map((s, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
-      <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${idx + 1}) ${s.name}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-      </div>
-    </div>
-  `).join('') : '';
-
-  let depTransitBpsHtml = depTransitBps.length > 0 ? depTransitBps.map((bp, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
-      <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})">(${idx + 1}) ${bp.title}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-      </div>
-    </div>
-  `).join('') : '';
-
-  depEl.innerHTML = `
-    <div class="flex items-center justify-between">
-      <div class="truncate cursor-pointer" onclick="centerMapOnCoords(${appState.departurePoint.lat}, ${appState.departurePoint.lng})">
-        <h4 class="font-bold text-sm text-slate-900 dark:text-white flex items-center"><i class="fa-solid fa-flag-checkered text-emerald-500 mr-2"></i>${appState.departurePoint.name}</h4>
-        <p class="text-xs text-slate-500 dark:text-slate-400 font-mono">${appState.departurePoint.lat.toFixed(3)}, ${appState.departurePoint.lng.toFixed(3)}</p>
-      </div>
-      <div class="flex items-center space-x-1">
-        <button onclick="centerMapOnCoords(${appState.departurePoint.lat}, ${appState.departurePoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="openEndpointModal('departure')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-      </div>
-    </div>
-    ${depTransit ? `
-      <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-        <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center flex-wrap gap-1">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span>${getTransitModeIcon(depTransit.mode)} ${depTransit.name} (${depTransit.mode || 'Voiture'})</span>
-            <label class="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 cursor-pointer">
-              <input type="checkbox" ${depTransit.isNightTransit ? 'checked' : ''} onchange="toggleTransitNight('${depTransit.id}', this.checked)" class="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
-              <span>Transport de nuit</span>
-            </label>
-          </div>
-          <span class="text-emerald-600 dark:text-emerald-400 font-mono">
-            ${depRouteInfo && depRouteInfo.isOsrm 
-              ? `🚗 ${depRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(depRouteInfo.durationMin)})` 
-              : `${depTransitCalc ? depTransitCalc.totalDist.toFixed(1) : 0} km`}
-          </span>
-        </div>
-        ${renderTransitEndpointsSummary(depTransit)}
-        ${depTransit.isNightTransit ? '<div class="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 p-1.5 rounded"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord active (remplace l\'hôtel)</div>' : ''}
-        ${depTransit.desc ? `<div class="text-[11px] text-slate-600 dark:text-slate-300 bg-white/70 dark:bg-slate-900/70 p-2 rounded border border-slate-200/80 dark:border-slate-800 whitespace-pre-line font-mono">${depTransit.desc}</div>` : ''}
-        ${depTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${depTransitSpotsHtml}</div>` : ''}
-        ${depTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${depTransitBpsHtml}</div>` : ''}
-        <div class="text-right pt-1">
-          <button onclick="editTransitModal('${depTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
-        </div>
-      </div>
-    ` : ''}
-  `;
-  container.appendChild(depEl);
-
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
   const computedDates = getZoneComputedDates();
   const transits = getTransits();
   const totalDist = calculateTotalTripDistance();
@@ -710,7 +633,6 @@ function renderStructureUI() {
     ? new Date(appState.pivotDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'Date non définie';
 
-<<<<<<< HEAD
   // === BILAN GLOBAL ===
   const bilanEl = document.createElement('div');
   bilanEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-sm';
@@ -760,20 +682,10 @@ function renderStructureUI() {
   appState.zones.forEach((zone, zoneIdx) => {
     const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0 };
     const zoneColor = zone.color || '#6366f1';
-=======
-  appState.zones.forEach((zone, index) => {
-    const comp = computedDates[zone.id] || { checkinDay: 0, checkoutDay: 0, nights: 0, rawNights: 0, nightTransitConsumed: 0 };
-    const checkinDate = deltaToDateStr(comp.checkinDay);
-    const checkoutDate = deltaToDateStr(comp.checkoutDay);
-    const zoneDist = calculateZoneTotalDistance(zone);
-    const zoneHotels = appState.hotels.filter(h => h.zoneId === zone.id);
-    const zoneAnchor = (zoneHotels.length === 0 && typeof getZoneAnchorPoint === 'function') ? getZoneAnchorPoint(zone.id) : null;
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
 
     const zoneBlock = document.createElement('div');
     zoneBlock.className = 'bg-white dark:bg-slate-950 rounded-xl shadow-sm overflow-hidden';
 
-<<<<<<< HEAD
     const zoneHeader = document.createElement('div');
     zoneHeader.className = 'px-3 py-2.5 cursor-pointer hover:opacity-80 transition flex items-center justify-between';
     zoneHeader.onclick = () => { jumpToDay(comp.checkinDay); switchLeftTab('planning'); };
@@ -784,110 +696,11 @@ function renderStructureUI() {
         <span class="text-[11px] text-slate-500 dark:text-slate-400">J+${comp.checkinDay} → J+${comp.checkoutDay}</span>
       </div>
       <span class="text-[11px] text-slate-500 dark:text-slate-400">${comp.nights} nuit${comp.nights > 1 ? 's' : ''}</span>
-=======
-    let zoneSpotsHtml = zoneSpots.length > 0 ? zoneSpots.map((item, idx) => `
-      <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
-        <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})">(${idx + 1}) ${item.spot.name}</span>
-        <div class="flex items-center space-x-1 shrink-0">
-          <button onclick="centerMapOnCoords(${item.spot.lat}, ${item.spot.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-          <button onclick="editSpot('${item.spot.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-          <button onclick="detachSpotFromDay(${item.day}, '${item.spot.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-        </div>
-      </div>
-    `).join('') : '';
-
-    let zoneBpsHtml = zoneBps.length > 0 ? zoneBps.map((item, idx) => `
-      <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
-        <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})">(${idx + 1}) ${item.bonPlan.title}</span>
-        <div class="flex items-center space-x-1 shrink-0">
-          <button onclick="centerMapOnCoords(${item.bonPlan.lat}, ${item.bonPlan.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-          <button onclick="editBonPlan('${item.bonPlan.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-          <button onclick="detachBonPlanFromDay(${item.day}, '${item.bonPlan.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-        </div>
-      </div>
-    `).join('') : '';
-
-    const zoneEl = document.createElement('div');
-    zoneEl.id = `card-zone-${zone.id}`;
-    zoneEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3 shadow-sm';
-    
-    const nightInfoStr = comp.nightTransitConsumed > 0
-      ? `${comp.nights} nuit(s) hôtel + ${comp.nightTransitConsumed} nuit(s) transport`
-      : `${comp.nights} nuit(s)`;
-
-    let html = `
-      <div class="border-b border-slate-200 dark:border-slate-800 pb-3" style="border-left: 4px solid ${zone.color}">
-        <div class="pl-2 space-y-1">
-          <div class="flex items-center justify-between">
-            <h4 class="font-bold text-sm text-slate-900 dark:text-white">${zone.name}</h4>
-            <div class="flex items-center space-x-1 shrink-0">
-              ${index > 0 ? `<button onclick="moveZoneOrder(${index}, -1)" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition" title="Monter"><i class="fa-solid fa-arrow-up text-xs"></i></button>` : ''}
-              ${index < appState.zones.length - 1 ? `<button onclick="moveZoneOrder(${index}, 1)" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition" title="Descendre"><i class="fa-solid fa-arrow-down text-xs"></i></button>` : ''}
-              <button onclick="editZone('${zone.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button onclick="deleteZone('${zone.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded transition" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
-          </div>
-          <div class="cursor-pointer hover:opacity-80 inline-block transition" onclick="jumpToDay(${comp.checkinDay})" title="Cliquer pour aller au premier jour J+${comp.checkinDay} dans le planning">
-            <span class="text-xs text-indigo-600 dark:text-indigo-300 font-mono font-bold bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60 flex items-center w-fit">
-              <i class="fa-solid fa-calendar-days mr-1.5 text-indigo-500 dark:text-indigo-400"></i>J+${comp.checkinDay} ➔ J+${comp.checkoutDay} (${nightInfoStr}) <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
-            </span>
-          </div>
-          <div class="flex items-center space-x-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap pt-1">
-            <span>🗓️ ${checkinDate} au ${checkoutDate}</span>
-            <span class="text-emerald-600 dark:text-emerald-400 font-mono">📍 Bilan secteur : ${zoneDist.toFixed(1)} km</span>
-          </div>
-        </div>
-      </div>
-
-      ${zoneSpots.length > 0 ? `<div class="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg"><span class="text-xs font-semibold text-slate-500 dark:text-slate-400 block">Spots programmés :</span>${zoneSpotsHtml}</div>` : ''}
-      ${zoneBps.length > 0 ? `<div class="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg"><span class="text-xs font-semibold text-slate-500 dark:text-slate-400 block">Bons plans du secteur :</span>${zoneBpsHtml}</div>` : ''}
-
-      <div class="space-y-2">
-        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400">Hébergements de la zone</div>
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
     `;
     zoneBlock.appendChild(zoneHeader);
 
-<<<<<<< HEAD
     const daysContent = document.createElement('div');
     daysContent.className = 'p-2.5 pt-0 space-y-2';
-=======
-    if (zoneHotels.length === 0) {
-      if (comp.nightTransitConsumed > 0) {
-        html += `<div class="text-xs text-amber-800 dark:text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/30 flex items-center justify-between gap-2 flex-wrap">
-          <div class="space-y-0.5">
-            <span><i class="fa-solid fa-bed mr-1.5"></i> Nuit(s) couverte(s) par le transport de nuit (${comp.nightTransitConsumed} nuit(s)).</span>
-            ${zoneAnchor ? `<span class="block text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer hover:underline" onclick="centerMapOnCoords(${zoneAnchor.lat}, ${zoneAnchor.lng})"><i class="fa-solid fa-location-dot text-indigo-500 mr-1"></i>Point d'ancrage : ${zoneAnchor.name}</span>` : ''}
-          </div>
-          <button onclick="openHotelModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0">+ Hébergement</button>
-        </div>`;
-      } else {
-        html += `<div class="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
-          <span><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Aucun hébergement (0 nuit) !</span>
-          <button onclick="openHotelModal()" class="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold">+ Hébergement</button>
-        </div>`;
-      }
-    } else {
-      zoneHotels.forEach(h => {
-        const rawH = parseInt(h.nights) || 0;
-        const nightsDisplay = `${rawH} nuit(s)`;
-        html += `
-          <div id="card-hotel-${h.id}" class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
-            <div class="truncate cursor-pointer hover:opacity-80" onclick="centerMapOnCoords(${h.lat}, ${h.lng})">
-              <span class="text-slate-900 dark:text-white font-semibold flex items-center"><i class="fa-solid fa-hotel text-blue-500 dark:text-blue-400 mr-1.5"></i>${h.name}</span>
-              <span class="text-slate-500 dark:text-slate-400 block truncate">${nightsDisplay} • Rayon : ${h.radiusKm || 50} km</span>
-              ${h.desc ? `<span class="text-slate-600 dark:text-slate-300 block italic truncate mt-0.5 text-[11px]">${h.desc}</span>` : ''}
-            </div>
-            <div class="flex items-center space-x-1 shrink-0 ml-2">
-              <button onclick="centerMapOnCoords(${h.lat}, ${h.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-              <button onclick="editHotel('${h.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button onclick="deleteHotel('${h.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400 rounded transition" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
-          </div>
-        `;
-      });
-    }
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
 
     for (let day = comp.checkinDay; day <= comp.checkoutDay; day++) {
       const dateStr = deltaToDateStr(day);
@@ -909,7 +722,6 @@ function renderStructureUI() {
         ? `🚗 ${dayRouteInfo.distanceKm.toFixed(1)} km${dayDurStr}`
         : `${dayRouteInfo.distanceKm.toFixed(1)} km`;
 
-<<<<<<< HEAD
       // === HEURES LEVER/COUCHER SOLEIL ===
       const sunrisePoint = dayRoute.originPoint;
       const sunsetPoint = dayRoute.destPoint;
@@ -933,32 +745,6 @@ function renderStructureUI() {
           ${sunInfo ? `<span class="text-[10px] text-amber-600 dark:text-amber-400">${sunInfo}</span>` : ''}
           <span class="text-[11px] font-mono ${dayRouteInfo.isOsrm ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-slate-400'}">${dayDistDisplay}</span>
           <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
-=======
-    if (nextTransit) {
-      html += `
-        <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-          <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center flex-wrap gap-1">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span>${getTransitModeIcon(nextTransit.mode)} ${nextTransit.name} (${nextTransit.mode || 'Voiture'})</span>
-              <label class="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 cursor-pointer">
-                <input type="checkbox" ${nextTransit.isNightTransit ? 'checked' : ''} onchange="toggleTransitNight('${nextTransit.id}', this.checked)" class="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
-                <span>Transport de nuit</span>
-              </label>
-            </div>
-            <span class="text-emerald-600 dark:text-emerald-400 font-mono">
-              ${nextRouteInfo && nextRouteInfo.isOsrm 
-                ? `🚗 ${nextRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(nextRouteInfo.durationMin)})` 
-                : `${nextTransitCalc ? nextTransitCalc.totalDist.toFixed(1) : 0} km`}
-            </span>
-          </div>
-          ${renderTransitEndpointsSummary(nextTransit)}
-          ${nextTransit.isNightTransit ? '<div class="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 p-1.5 rounded"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord active (remplace l\'hôtel)</div>' : ''}
-          ${nextTransit.desc ? `<div class="text-[11px] text-slate-600 dark:text-slate-300 bg-white/70 dark:bg-slate-900/70 p-2 rounded border border-slate-200/80 dark:border-slate-800 whitespace-pre-line font-mono">${nextTransit.desc}</div>` : ''}
-          ${nextTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots en transit :</span>${nextTransitSpots.map((s, sIdx) => `<div class="flex items-center justify-between py-0.5 px-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800"><span class="text-slate-700 dark:text-slate-300 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${sIdx + 1}) ${s.name}</span><div class="flex space-x-1"><button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="text-emerald-600 dark:text-emerald-400 p-1" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button><button onclick="editSpot('${s.id}')" class="text-indigo-600 dark:text-indigo-400 p-1"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`).join('')}</div>` : ''}
-          <div class="text-right pt-1">
-            <button onclick="editTransitModal('${nextTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
-          </div>
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
         </div>
       `;
       dayCard.appendChild(dayHeader);
@@ -1119,7 +905,6 @@ function renderStructureUI() {
     const returnBlock = document.createElement('div');
     returnBlock.className = 'bg-white dark:bg-slate-950 rounded-xl shadow-sm overflow-hidden border-r-4 border-slate-300 dark:border-slate-600';
 
-<<<<<<< HEAD
     const returnHeader = document.createElement('div');
     returnHeader.className = 'px-3 py-2.5 bg-slate-100 dark:bg-slate-900 cursor-pointer hover:opacity-80 transition flex items-center justify-between';
     returnHeader.onclick = () => { jumpToDay(lastZoneDay + 1); switchLeftTab('planning'); };
@@ -1128,31 +913,10 @@ function renderStructureUI() {
         <span class="text-sm">🏠</span>
         <span class="font-bold text-sm text-slate-600 dark:text-slate-300">Retour</span>
         <span class="text-[11px] text-slate-500 dark:text-slate-400">J+${lastZoneDay + 1} → J+${totalDays - 1}</span>
-=======
-  const arrTransit = getTransits().find(t => t.id === 'transit_last_arr');
-  const arrTransitCalc = arrTransit ? calculateTransitDistances(arrTransit) : null;
-  const isArrRoad = arrTransit ? isRoadTransitMode(arrTransit.mode, arrTransit.isNightTransit) : true;
-  const arrRouteInfo = (arrTransitCalc && isArrRoad) ? getEffectiveDistanceAndDuration(arrTransit.id, arrTransitCalc.totalDist) : null;
-  const arrTransitSpots = appState.spots.filter(s => s.target === 'transit_last_arr');
-  const arrTransitBps = appState.bonsPlans.filter(bp => bp.target === 'transit_last_arr');
-
-  const arrEl = document.createElement('div');
-  arrEl.id = `card-endpoint-arrival`;
-  arrEl.className = 'bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 shadow-sm';
-
-  let arrTransitSpotsHtml = arrTransitSpots.length > 0 ? arrTransitSpots.map((s, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800/60">
-      <span class="text-slate-700 dark:text-slate-300 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${s.lat}, ${s.lng})">(${idx + 1}) ${s.name}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${s.lat}, ${s.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignSpot('${s.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
       </div>
     `;
     returnBlock.appendChild(returnHeader);
 
-<<<<<<< HEAD
     const returnDays = document.createElement('div');
     returnDays.className = 'p-2.5 pt-0 space-y-2';
 
@@ -1197,53 +961,6 @@ function renderStructureUI() {
           ${sunInfo ? `<span class="text-[10px] text-amber-600 dark:text-amber-400">${sunInfo}</span>` : ''}
           <span class="text-[11px] font-mono ${dayRouteInfo.isOsrm ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-slate-400'}">${dayDistDisplay}</span>
           <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
-=======
-  let arrTransitBpsHtml = arrTransitBps.length > 0 ? arrTransitBps.map((bp, idx) => `
-    <div class="flex items-center justify-between text-xs py-1 px-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/30">
-      <span class="text-amber-900 dark:text-amber-200 font-medium cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400" onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})">(${idx + 1}) ${bp.title}</span>
-      <div class="flex items-center space-x-1 shrink-0">
-        <button onclick="centerMapOnCoords(${bp.lat}, ${bp.lng})" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="editBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-        <button onclick="unassignBonPlan('${bp.id}')" class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-600 dark:text-amber-400 rounded transition" title="Détacher"><i class="fa-solid fa-link-slash"></i></button>
-      </div>
-    </div>
-  `).join('') : '';
-
-  arrEl.innerHTML = `
-    <div class="flex items-center justify-between">
-      <div class="truncate cursor-pointer" onclick="centerMapOnCoords(${appState.arrivalPoint.lat}, ${appState.arrivalPoint.lng})">
-        <h4 class="font-bold text-sm text-slate-900 dark:text-white flex items-center"><i class="fa-solid fa-house-flag text-blue-500 mr-2"></i>${appState.arrivalPoint.name}</h4>
-        <p class="text-xs text-slate-500 dark:text-slate-400 font-mono">${appState.arrivalPoint.lat.toFixed(3)}, ${appState.arrivalPoint.lng.toFixed(3)}</p>
-      </div>
-      <div class="flex items-center space-x-1">
-        <button onclick="centerMapOnCoords(${appState.arrivalPoint.lat}, ${appState.arrivalPoint.lng})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:hover:text-emerald-400 rounded transition" title="Centrer"><i class="fa-solid fa-crosshairs"></i></button>
-        <button onclick="openEndpointModal('arrival')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded transition" title="Éditer"><i class="fa-solid fa-pen-to-square"></i></button>
-      </div>
-    </div>
-    ${arrTransit ? `
-      <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs space-y-2 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-        <div class="font-semibold text-slate-800 dark:text-slate-200 flex justify-between items-center flex-wrap gap-1">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span>${getTransitModeIcon(arrTransit.mode)} ${arrTransit.name} (${arrTransit.mode || 'Voiture'})</span>
-            <label class="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 cursor-pointer">
-              <input type="checkbox" ${arrTransit.isNightTransit ? 'checked' : ''} onchange="toggleTransitNight('${arrTransit.id}', this.checked)" class="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
-              <span>Transport de nuit</span>
-            </label>
-          </div>
-          <span class="text-emerald-600 dark:text-emerald-400 font-mono">
-            ${arrRouteInfo && arrRouteInfo.isOsrm 
-              ? `🚗 ${arrRouteInfo.distanceKm.toFixed(1)} km (~${formatDuration(arrRouteInfo.durationMin)})` 
-              : `${arrTransitCalc ? arrTransitCalc.totalDist.toFixed(1) : 0} km`}
-          </span>
-        </div>
-        ${renderTransitEndpointsSummary(arrTransit)}
-        ${arrTransit.isNightTransit ? '<div class="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 p-1.5 rounded"><i class="fa-solid fa-bed mr-1"></i>🛌 Nuit à bord active (remplace l\'hôtel)</div>' : ''}
-        ${arrTransit.desc ? `<div class="text-[11px] text-slate-600 dark:text-slate-300 bg-white/70 dark:bg-slate-900/70 p-2 rounded border border-slate-200/80 dark:border-slate-800 whitespace-pre-line font-mono">${arrTransit.desc}</div>` : ''}
-        ${arrTransitSpots.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Spots :</span>${arrTransitSpotsHtml}</div>` : ''}
-        ${arrTransitBps.length > 0 ? `<div class="space-y-1"><span class="text-slate-500 dark:text-slate-400 font-semibold block">Bons plans :</span>${arrTransitBpsHtml}</div>` : ''}
-        <div class="text-right pt-1">
-          <button onclick="editTransitModal('${arrTransit.id}')" class="p-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"><i class="fa-solid fa-pen-to-square mr-1"></i>Configurer transit</button>
->>>>>>> 4ed0cf4643d95e0d6d2846460e7e9c332f6f2dfd
         </div>
       `;
       dayCard.appendChild(dayHeader);
