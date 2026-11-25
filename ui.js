@@ -412,7 +412,7 @@ function renderTravelerUI() {
   const sunEl = document.getElementById('travelerSunInfo');
   if (sunEl) {
     if (sunRise && !sunRise.error) {
-      sunEl.innerHTML = `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneOffset}h)</span>`;
+      sunEl.innerHTML = `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneDiff}h)</span>`;
     } else {
       sunEl.innerHTML = '';
     }
@@ -727,7 +727,7 @@ function renderStructureUI() {
       const sunsetPoint = dayRoute.destPoint;
       const sunRise = (sunrisePoint && dateStr) ? getSunTimes(sunrisePoint.lat, sunrisePoint.lng, dateStr) : null;
       const sunSet = (sunsetPoint && dateStr) ? getSunTimes(sunsetPoint.lat, sunsetPoint.lng, dateStr) : null;
-      const sunInfo = (sunRise && !sunRise.error) ? `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneOffset}h)</span>` : '';
+      const sunInfo = (sunRise && !sunRise.error) ? `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneDiff}h)</span>` : '';
 
       const dayCard = document.createElement('div');
       dayCard.className = 'bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/60 rounded-lg overflow-hidden';
@@ -943,7 +943,7 @@ function renderStructureUI() {
       const sunsetPoint = dayRoute.destPoint;
       const sunRise = (sunrisePoint && dateStr) ? getSunTimes(sunrisePoint.lat, sunrisePoint.lng, dateStr) : null;
       const sunSet = (sunsetPoint && dateStr) ? getSunTimes(sunsetPoint.lat, sunsetPoint.lng, dateStr) : null;
-      const sunInfo = (sunRise && !sunRise.error) ? `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneOffset}h)</span>` : '';
+      const sunInfo = (sunRise && !sunRise.error) ? `🌅 ${sunRise.sunriseLocal} / 🌇 ${sunSet?.sunsetLocal ?? '--:--'} <span class="text-[9px] text-slate-400">(${sunRise.timezoneDiff}h)</span>` : '';
 
       const dayCard = document.createElement('div');
       dayCard.className = 'bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/60 rounded-lg overflow-hidden';

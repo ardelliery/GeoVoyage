@@ -349,15 +349,15 @@ function deltaToShortDateStr(deltaDays) {
  * Formule NOAA simplifiée (précision ~1-2 minutes)
  *
  * Paramètres : latitude (-90 à +90), longitude (-180 à +180), date (YYYY-MM-DD)
- * Retourne : { sunriseLocal, sunsetLocal, timezoneOffset }
+ * Retourne : { sunriseLocal, sunsetLocal, timezoneDiff }
  */
 function getSunTimes(latitude, longitude, dateStr) {
   if (latitude === undefined || longitude === undefined || isNaN(latitude) || isNaN(longitude)) {
-    return { sunriseLocal: '--:--', sunsetLocal: '--:--', timezoneOffset: '--', error: 'Coordonnées invalides' };
+    return { sunriseLocal: '--:--', sunsetLocal: '--:--', timezoneDiff: '--', error: 'Coordonnées invalides' };
   }
   const [year, month, day] = dateStr.split('-').map(Number);
   if (!year || !month || !day) {
-    return { sunriseLocal: '--:--', sunsetLocal: '--:--', timezoneOffset: '--', error: 'Date invalide' };
+    return { sunriseLocal: '--:--', sunsetLocal: '--:--', timezoneDiff: '--', error: 'Date invalide' };
   }
 
   const N = dayOfYear(year, month, day);
@@ -379,22 +379,31 @@ function getSunTimes(latitude, longitude, dateStr) {
   const cosHA = (Math.cos(90.833 * Math.PI / 180) - Math.sin(latRad) * Math.sin(declRad))
               / (Math.cos(latRad) * Math.cos(declRad));
 
-  if (cosHA > 1) return { sunriseLocal: '---', sunsetLocal: '---', timezoneOffset: '--', error: 'Nuit polaire' };
-  if (cosHA < -1) return { sunriseLocal: '---', sunsetLocal: '---', timezoneOffset: '--', error: 'Jour polaire' };
+  if (cosHA > 1) return { sunriseLocal: '---', sunsetLocal: '---', timezoneDiff: '--', error: 'Nuit polaire' };
+  if (cosHA < -1) return { sunriseLocal: '---', sunsetLocal: '---', timezoneDiff: '--', error: 'Jour polaire' };
 
   const ha = Math.acos(cosHA) * 180 / Math.PI;
 
-  // Midi solaire (minutes UTC) — FORMULE CORRECTE
+  // Midi solaire (minutes UTC)
   const solarNoonUT = 720 - 4 * longitude - eqOfTime;
 
   // Lever et coucher (minutes UTC)
   const sunriseUT = solarNoonUT - ha * 4;
   const sunsetUT = solarNoonUT + ha * 4;
 
-  // Fuseau horaire géographique basé sur la longitude + DST
-  const offsetMin = getGeographicTimezoneOffset(longitude, month);
+  // Fuseau horaire du LIEU (géographique basé sur longitude + DST)
+  const tzOffsetMin = getGeographicTimezoneOffset(longitude, month);
 
-  // Format HH:MM
+  // Fuseau horaire du NAVIGATEUR (client)
+  const clientOffsetMin = getClientTimezoneOffsetMinutes();
+
+  // Différence : fuseau_lieu - fuseau_client
+  const tzDiffMin = tzOffsetMin - clientOffsetMin;
+  const tzDiffH = tzDiffMin / 60;
+  const tzDiffSign = tzDiffH >= 0 ? '+' : '';
+  const timezoneDiff = tzDiffSign + tzDiffH.toString();
+
+  // Format HH:MM (heure locale du lieu)
   const formatMin = (min) => {
     let m = Math.round(min);
     m = ((m % 1440) + 1440) % 1440;
@@ -403,15 +412,10 @@ function getSunTimes(latitude, longitude, dateStr) {
     return h.toString().padStart(2, '0') + ':' + mn.toString().padStart(2, '0');
   };
 
-  const sunriseLocal = formatMin(sunriseUT + offsetMin);
-  const sunsetLocal = formatMin(sunsetUT + offsetMin);
+  const sunriseLocal = formatMin(sunriseUT + tzOffsetMin);
+  const sunsetLocal = formatMin(sunsetUT + tzOffsetMin);
 
-  // Fuseau au format +HH
-  const offsetH = offsetMin / 60;
-  const tzSign = offsetH >= 0 ? '+' : '';
-  const timezoneOffset = tzSign + offsetH.toString();
-
-  return { sunriseLocal, sunsetLocal, timezoneOffset, error: null };
+  return { sunriseLocal, sunsetLocal, timezoneDiff, error: null };
 }
 
 /**
@@ -424,12 +428,19 @@ function dayOfYear(year, month, day) {
 }
 
 /**
+ * Offset minutes UTC du navigateur (client)
+ */
+function getClientTimezoneOffsetMinutes() {
+  return -new Date().getTimezoneOffset();
+}
+
+/**
  * Fuseau horaire géographique en minutes basé sur la longitude, avec DST
  * Longitude / 15 → fuseau de base
  * +1h si DST (été dans hémisphère nord entre mars et octobre, hiver dans hémisphère sud entre octobre et mars)
  */
 function getGeographicTimezoneOffset(longitude, month) {
-  const baseOffsetHours = Math.round(longitude / 15);
+  const baseOffsetHours = Math.round((longitude + 7.5) / 15);
   let dst = 0;
 
   // DST pour hémisphère nord (mars-octobre)
